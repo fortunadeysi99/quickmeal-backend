@@ -78,20 +78,35 @@ exports.createMenu = async (req, res) => {
 exports.getRestaurantMenus = async (req, res) => {
   try {
     const { restaurantId } = req.params;
-    const { category } = req.query;
+    const { category, page = 1, limit = 20, available } = req.query;
 
-    let query = { restaurant: restaurantId };
+    const query = { restaurant: restaurantId };
 
     if (category) {
       query.category = category;
     }
+    if (available !== undefined) {
+      query.isAvailable = available === "true";
+    }
+
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const pageSize = Math.max(parseInt(limit, 10) || 20, 1);
+
+    const totalMenus = await Menu.countDocuments(query);
+    const totalPages = Math.ceil(totalMenus / pageSize);
 
     const menus = await Menu.find(query)
-      .populate("restaurant", "name phone address");
+      .populate("restaurant", "name phone address")
+      .sort({ createdAt: -1 })
+      .skip((pageNumber - 1) * pageSize)
+      .limit(pageSize);
 
     res.json({
       success: true,
-      total: menus.length,
+      total: totalMenus,
+      page: pageNumber,
+      limit: pageSize,
+      totalPages,
       menus,
     });
   } catch (err) {
