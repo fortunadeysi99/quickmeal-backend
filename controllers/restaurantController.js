@@ -92,7 +92,8 @@ exports.getAllRestaurants = async (req, res) => {
   try {
     const { category, search } = req.query;
 
-    let query = { isOpen: true };
+    // let query = { isOpen: true };
+    let query = {  };
 
     if (category) {
       query.categories = { $in: [category] };
