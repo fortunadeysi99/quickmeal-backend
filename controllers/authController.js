@@ -85,6 +85,8 @@ exports.registerOwner = async (req, res) => {
       restaurantName,
       restaurantAddress,
       restaurantPhone,
+      longitude,
+      latitude
     } = req.body;
 
     if (!name || !email || !password || !restaurantName || !restaurantAddress || !restaurantPhone) {
@@ -124,6 +126,10 @@ exports.registerOwner = async (req, res) => {
       name: restaurantName,
       address: restaurantAddress,
       phone: restaurantPhone,
+      location: {
+        longitude,
+        latitude
+      }
     });
 
     // Tambahkan restaurant ke list restaurants milik owner
