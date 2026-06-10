@@ -14,7 +14,7 @@ exports.registerUser = async (req, res) => {
       });
     }
 
-    const { name, email, password, phone } = req.body;
+    const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -45,7 +45,6 @@ exports.registerUser = async (req, res) => {
       name,
       email,
       password: hashedPassword,
-      phone,
       role: "user",
     });
 
@@ -59,8 +58,7 @@ exports.registerUser = async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role,
-        phone: user.phone,
+        role: user.role
       },
     });
   } catch (err) {
@@ -84,7 +82,6 @@ exports.registerOwner = async (req, res) => {
       name,
       email,
       password,
-      phone,
       restaurantName,
       restaurantAddress,
       restaurantPhone,
@@ -119,7 +116,6 @@ exports.registerOwner = async (req, res) => {
       name,
       email,
       password: hashedPassword,
-      phone,
       role: "owner",
     });
 
@@ -144,8 +140,7 @@ exports.registerOwner = async (req, res) => {
         _id: owner._id,
         name: owner.name,
         email: owner.email,
-        role: owner.role,
-        phone: owner.phone
+        role: owner.role
       },
       restaurant: {
         _id: restaurant._id,
