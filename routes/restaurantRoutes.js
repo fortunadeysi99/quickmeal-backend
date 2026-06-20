@@ -5,6 +5,8 @@ const {
   getRestaurantById,
   getAllRestaurants,
   updateRestaurant,
+  updateRestaurantStatus,
+  updateRestaurantSchedule,
   updateRestaurantLocation,
   deleteRestaurant,
   addCategories,
@@ -20,6 +22,8 @@ router.get("/", getAllRestaurants);
 router.post("/", protect, authorize("owner"), createRestaurant);
 router.get("/owner/my-restaurants", protect, authorize("owner"), getMyRestaurants);
 router.put("/:restaurantId", protect, authorize("owner"), updateRestaurant);
+router.put("/:restaurantId/status", protect, authorize("owner"), updateRestaurantStatus);
+router.put("/:restaurantId/schedule", protect, authorize("owner"), updateRestaurantSchedule);
 router.delete("/:restaurantId", protect, authorize("owner"), deleteRestaurant);
 
 // Public detail route

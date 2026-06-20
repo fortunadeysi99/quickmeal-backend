@@ -136,8 +136,6 @@ exports.updateRestaurant = async (req, res) => {
       logo,
       removeBanner,
       removeLogo,
-      openingHours,
-      operatingStatus,
       latitude,
       longitude,
     } = req.body;
@@ -169,23 +167,6 @@ exports.updateRestaurant = async (req, res) => {
     if (removeBanner === true) restaurant.banner = null;
     if (removeLogo === true) restaurant.logo = null;
 
-    if (openingHours && typeof openingHours === "object") {
-      restaurant.openingHours = openingHours;
-    }
-
-    if (operatingStatus) {
-      const allowed = ["open", "closed", "busy"];
-      if (!allowed.includes(operatingStatus)) {
-        return res.status(400).json({
-          success: false,
-          message: "Status operasional tidak valid",
-        });
-      }
-
-      restaurant.operatingStatus = operatingStatus;
-      restaurant.isOpen = operatingStatus !== "closed";
-    }
-
     if (latitude !== undefined || longitude !== undefined) {
       restaurant.location = {
         latitude: latitude !== undefined ? parseFloat(latitude) : restaurant.location?.latitude,
@@ -202,6 +183,94 @@ exports.updateRestaurant = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+exports.updateRestaurantStatus = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+    const { operatingStatus } = req.body;
+
+    const allowed = ["open", "closed", "busy"];
+    if (!allowed.includes(operatingStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: "Status operasional tidak valid",
+      });
+    }
+
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        message: "Restoran tidak ditemukan",
+      });
+    }
+
+    if (restaurant.owner.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Anda tidak memiliki akses untuk mengubah restoran ini",
+      });
+    }
+
+    restaurant.operatingStatus = operatingStatus;
+    restaurant.isOpen = operatingStatus !== "closed";
+    await restaurant.save();
+
+    return res.json({
+      success: true,
+      message: "Status restoran berhasil diperbarui",
+      restaurant,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+exports.updateRestaurantSchedule = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+    const { openingHours } = req.body;
+
+    if (!openingHours || typeof openingHours !== "object") {
+      return res.status(400).json({
+        success: false,
+        message: "Jadwal operasional tidak valid",
+      });
+    }
+
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        message: "Restoran tidak ditemukan",
+      });
+    }
+
+    if (restaurant.owner.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Anda tidak memiliki akses untuk mengubah restoran ini",
+      });
+    }
+
+    restaurant.openingHours = openingHours;
+    await restaurant.save();
+
+    return res.json({
+      success: true,
+      message: "Jadwal restoran berhasil diperbarui",
+      restaurant,
+    });
+  } catch (err) {
+    return res.status(500).json({
       success: false,
       message: err.message,
     });
