@@ -34,6 +34,16 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    status: {
+      type: String,
+      enum: ["active", "deleted"],
+      default: "active",
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
     // Untuk owner - reference ke restaurant yang dikelola
     restaurants: [{
       type: mongoose.Schema.Types.ObjectId,

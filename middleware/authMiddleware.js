@@ -24,9 +24,16 @@ exports.protect = async (
       process.env.JWT_SECRET
     );
 
-    req.user = await User.findById(
-      decoded.id
-    );
+    req.user = await User.findOne({
+      _id: decoded.id,
+      status: "active",
+    });
+
+    if (!req.user) {
+      return res.status(401).json({
+        message: "Unauthorized",
+      });
+    }
 
     next();
   } else {

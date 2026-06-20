@@ -1,4 +1,5 @@
 const User = require("../models/User");
+const Restaurant = require("../models/Restaurant");
 const bcrypt = require("bcryptjs");
 
 const VALID_ROLES = ["admin", "owner", "user"];
@@ -56,7 +57,7 @@ exports.updateProfile = async (req, res) => {
         });
       }
 
-      const emailExists = await User.findOne({ email });
+      const emailExists = await User.findOne({ email, status: "active" });
       if (emailExists) {
         return res.status(400).json({
           success: false,
@@ -195,7 +196,10 @@ exports.removeFromWishlist = async (req, res) => {
 
 exports.getWishlist = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).populate("wishlist");
+    const user = await User.findById(req.user._id).populate({
+      path: "wishlist",
+      match: { status: "active" }
+    });
 
     res.json({
       success: true,
@@ -221,7 +225,7 @@ exports.getAllUsers = async (req, res) => {
     const role = req.query.role;
     const search = (req.query.search || "").trim();
 
-    const query = {};
+    const query = { status: "active" };
 
     if (role && VALID_ROLES.includes(role)) {
       query.role = role;
@@ -264,10 +268,13 @@ exports.getUserDetail = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const user = await User.findById(userId)
+    const user = await User.findOne({ _id: userId, status: "active" })
       .select("-password")
       .populate("restaurants")
-      .populate("wishlist");
+      .populate({
+        path: "wishlist",
+        match: { status: "active" }
+      });
 
     if (!user) {
       return res.status(404).json({
@@ -290,7 +297,20 @@ exports.getUserDetail = async (req, res) => {
 
 exports.createUserByAdmin = async (req, res) => {
   try {
-    const { name, email, password, role = "user", phone, address, avatar } = req.body;
+    const {
+      name,
+      email,
+      password,
+      role = "user",
+      phone,
+      address,
+      avatar,
+      restaurantName,
+      restaurantAddress,
+      restaurantPhone,
+      latitude,
+      longitude,
+    } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -313,7 +333,17 @@ exports.createUserByAdmin = async (req, res) => {
       });
     }
 
-    const exists = await User.findOne({ email: email.toLowerCase() });
+    if (
+      role === "owner" &&
+      (!restaurantName || !restaurantAddress || !restaurantPhone)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Data restoran owner wajib diisi",
+      });
+    }
+
+    const exists = await User.findOne({ email: email.toLowerCase(), status: "active" });
     if (exists) {
       return res.status(400).json({
         success: false,
@@ -331,7 +361,24 @@ exports.createUserByAdmin = async (req, res) => {
       phone,
       address,
       avatar,
+      status: "active"
     });
+
+    if (role === "owner") {
+      const restaurant = await Restaurant.create({
+        owner: newUser._id,
+        name: restaurantName,
+        address: restaurantAddress,
+        phone: restaurantPhone,
+        location: {
+          latitude,
+          longitude,
+        },
+      });
+
+      newUser.restaurants.push(restaurant._id);
+      await newUser.save();
+    }
 
     const user = await User.findById(newUser._id).select("-password");
 
@@ -353,7 +400,7 @@ exports.updateUserByAdmin = async (req, res) => {
     const { userId } = req.params;
     const { name, email, role, password, phone, address, avatar } = req.body;
 
-    const user = await User.findById(userId);
+    const user = await User.findOne({ _id: userId, status: "active" });
 
     if (!user) {
       return res.status(404).json({
@@ -380,6 +427,7 @@ exports.updateUserByAdmin = async (req, res) => {
       const emailExists = await User.findOne({
         email: email.toLowerCase(),
         _id: { $ne: userId },
+        status: "active"
       });
 
       if (emailExists) {
@@ -424,7 +472,7 @@ exports.deleteUser = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const user = await User.findByIdAndDelete(userId);
+    const user = await User.findOne({ _id: userId, status: "active" });
 
     if (!user) {
       return res.status(404).json({
@@ -432,6 +480,10 @@ exports.deleteUser = async (req, res) => {
         message: "User tidak ditemukan",
       });
     }
+
+    user.status = "deleted";
+    user.deletedAt = new Date();
+    await user.save();
 
     res.json({
       success: true,

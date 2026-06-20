@@ -30,7 +30,7 @@ exports.registerUser = async (req, res) => {
       });
     }
 
-    const exists = await User.findOne({ email });
+    const exists = await User.findOne({ email, status: "active" });
 
     if (exists) {
       return res.status(400).json({
@@ -46,6 +46,7 @@ exports.registerUser = async (req, res) => {
       email,
       password: hashedPassword,
       role: "user",
+      status: "active"
     });
 
     const token = generateToken(user._id);
@@ -103,7 +104,7 @@ exports.registerOwner = async (req, res) => {
       });
     }
 
-    const exists = await User.findOne({ email });
+    const exists = await User.findOne({ email, status: "active" });
 
     if (exists) {
       return res.status(400).json({
@@ -119,6 +120,7 @@ exports.registerOwner = async (req, res) => {
       email,
       password: hashedPassword,
       role: "owner",
+      status: "active"
     });
 
     const restaurant = await Restaurant.create({
@@ -183,7 +185,10 @@ exports.login = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ email }).populate("restaurants");
+    const user = await User.findOne({
+      email,
+      status: "active",
+    }).populate("restaurants");
 
     if (!user) {
       return res.status(401).json({
@@ -229,9 +234,16 @@ exports.login = async (req, res) => {
 
 exports.getCurrentUser = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id)
+    const user = await User.findOne({ _id: req.user._id, status: "active" })
       .select("-password")
       .populate("restaurants");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User tidak ditemukan",
+      });
+    }
 
     res.json({
       success: true,
