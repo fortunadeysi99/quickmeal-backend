@@ -380,7 +380,9 @@ exports.createUserByAdmin = async (req, res) => {
       await newUser.save();
     }
 
-    const user = await User.findById(newUser._id).select("-password");
+    const user = await User.findById(newUser._id)
+      .select("-password")
+      .populate("restaurants");
 
     res.status(201).json({
       success: true,
