@@ -398,7 +398,20 @@ exports.createUserByAdmin = async (req, res) => {
 exports.updateUserByAdmin = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { name, email, role, password, phone, address, avatar } = req.body;
+    const {
+      name,
+      email,
+      role,
+      password,
+      phone,
+      address,
+      avatar,
+      restaurantName,
+      restaurantAddress,
+      restaurantPhone,
+      latitude,
+      longitude,
+    } = req.body;
 
     const user = await User.findOne({ _id: userId, status: "active" });
 
@@ -449,9 +462,55 @@ exports.updateUserByAdmin = async (req, res) => {
       user.password = await bcrypt.hash(password, 10);
     }
 
+    const effectiveRole = role || user.role;
+
+    if (effectiveRole === "owner") {
+      if (!restaurantName || !restaurantAddress || !restaurantPhone) {
+        return res.status(400).json({
+          success: false,
+          message: "Data restoran owner wajib diisi",
+        });
+      }
+
+      let ownerRestaurant = null;
+
+      if (Array.isArray(user.restaurants) && user.restaurants.length > 0) {
+        ownerRestaurant = await Restaurant.findById(user.restaurants[0]);
+      }
+
+      if (!ownerRestaurant) {
+        ownerRestaurant = await Restaurant.findOne({ owner: user._id });
+      }
+
+      if (ownerRestaurant) {
+        ownerRestaurant.name = restaurantName;
+        ownerRestaurant.address = restaurantAddress;
+        ownerRestaurant.phone = restaurantPhone;
+        ownerRestaurant.location = {
+          latitude,
+          longitude,
+        };
+        await ownerRestaurant.save();
+      } else {
+        const createdRestaurant = await Restaurant.create({
+          owner: user._id,
+          name: restaurantName,
+          address: restaurantAddress,
+          phone: restaurantPhone,
+          location: {
+            latitude,
+            longitude,
+          },
+        });
+        user.restaurants = [createdRestaurant._id];
+      }
+    }
+
     await user.save();
 
-    const updatedUser = await User.findById(user._id).select("-password");
+    const updatedUser = await User.findById(user._id)
+      .select("-password")
+      .populate("restaurants");
 
     res.json({
       success: true,
