@@ -15,19 +15,15 @@ const menuSchema = new mongoose.Schema(
       type: String,
     },
     category: {
-      type: String,
-      default: "Makanan",
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Category",
+      required: true,
     },
     price: {
       type: Number,
       required: true,
     },
-    // Stok makanan
-    stock: {
-      type: Number,
-      default: 0,
-    },
-    // Apakah tersedia
+    // Apakah menu tersedia untuk dipesan
     isAvailable: {
       type: Boolean,
       default: true,
@@ -35,6 +31,20 @@ const menuSchema = new mongoose.Schema(
     image: {
       type: String,
     },
+    variants: [
+      {
+        name: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        price: {
+          type: Number,
+          required: true,
+          min: 0,
+        },
+      },
+    ],
     // Rating menu
     rating: {
       type: Number,
@@ -45,17 +55,6 @@ const menuSchema = new mongoose.Schema(
     reviewCount: {
       type: Number,
       default: 0,
-    },
-    // Info nutrisional (optional)
-    calories: Number,
-    preparationTime: Number, // dalam menit
-    spicy: {
-      type: Boolean,
-      default: false,
-    },
-    vegetarian: {
-      type: Boolean,
-      default: false,
     },
   },
   {

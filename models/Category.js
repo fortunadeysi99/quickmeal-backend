@@ -10,27 +10,14 @@ const categorySchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
+      trim: true,
     },
-    description: {
-      type: String,
-    },
-    icon: {
-      type: String,
-    },
-    // Urutan tampilan kategori
-    order: {
-      type: Number,
-      default: 0,
-    },
-    // Menus dalam kategori ini
-    menus: [{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Menu",
-    }],
   },
   {
     timestamps: true,
   }
 );
+
+categorySchema.index({ restaurant: 1, name: 1 }, { unique: true });
 
 module.exports = mongoose.model("Category", categorySchema);

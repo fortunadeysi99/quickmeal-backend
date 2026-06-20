@@ -1,12 +1,15 @@
 const Category = require("../models/Category");
 const Restaurant = require("../models/Restaurant");
+const Menu = require("../models/Menu");
 
-// ==================== CREATE CATEGORY ====================
+function normalizedName(value) {
+  return String(value || "").trim();
+}
 
 exports.createCategory = async (req, res) => {
   try {
     const { restaurantId } = req.params;
-    const { name, description, icon, order } = req.body;
+    const name = normalizedName(req.body.name);
 
     if (!name) {
       return res.status(400).json({
@@ -16,7 +19,6 @@ exports.createCategory = async (req, res) => {
     }
 
     const restaurant = await Restaurant.findById(restaurantId);
-
     if (!restaurant) {
       return res.status(404).json({
         success: false,
@@ -24,7 +26,6 @@ exports.createCategory = async (req, res) => {
       });
     }
 
-    // Cek owner
     if (restaurant.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
@@ -32,59 +33,66 @@ exports.createCategory = async (req, res) => {
       });
     }
 
+    const existing = await Category.findOne({ restaurant: restaurantId, name });
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        message: "Kategori dengan nama tersebut sudah ada",
+      });
+    }
+
     const category = await Category.create({
       restaurant: restaurantId,
       name,
-      description,
-      icon,
-      order: order || 0,
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Kategori berhasil dibuat",
       category,
     });
   } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: err.message,
     });
   }
 };
-
-// ==================== GET RESTAURANT CATEGORIES ====================
 
 exports.getCategories = async (req, res) => {
   try {
     const { restaurantId } = req.params;
 
-    const categories = await Category.find({ restaurant: restaurantId })
-      .populate("menus", "name price image")
-      .sort({ order: 1 });
+    const categories = await Category.find({ restaurant: restaurantId }).sort({ name: 1 });
 
-    res.json({
+    const categoriesWithUsage = await Promise.all(
+      categories.map(async (category) => {
+        const menuCount = await Menu.countDocuments({ category: category._id });
+        return {
+          ...category.toObject(),
+          menuCount,
+        };
+      })
+    );
+
+    return res.json({
       success: true,
-      total: categories.length,
-      categories,
+      total: categoriesWithUsage.length,
+      categories: categoriesWithUsage,
     });
   } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: err.message,
     });
   }
 };
-
-// ==================== GET CATEGORY BY ID ====================
 
 exports.getCategoryById = async (req, res) => {
   try {
     const { categoryId } = req.params;
 
-    const category = await Category.findById(categoryId)
-      .populate("menus");
-
+    const category = await Category.findById(categoryId);
     if (!category) {
       return res.status(404).json({
         success: false,
@@ -92,27 +100,29 @@ exports.getCategoryById = async (req, res) => {
       });
     }
 
-    res.json({
+    const menuCount = await Menu.countDocuments({ category: category._id });
+
+    return res.json({
       success: true,
-      category,
+      category: {
+        ...category.toObject(),
+        menuCount,
+      },
     });
   } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: err.message,
     });
   }
 };
 
-// ==================== UPDATE CATEGORY ====================
-
 exports.updateCategory = async (req, res) => {
   try {
     const { categoryId } = req.params;
-    const { name, description, icon, order } = req.body;
+    const name = normalizedName(req.body.name);
 
     const category = await Category.findById(categoryId).populate("restaurant");
-
     if (!category) {
       return res.status(404).json({
         success: false,
@@ -120,7 +130,6 @@ exports.updateCategory = async (req, res) => {
       });
     }
 
-    // Cek owner
     if (category.restaurant.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
@@ -128,34 +137,47 @@ exports.updateCategory = async (req, res) => {
       });
     }
 
-    if (name) category.name = name;
-    if (description) category.description = description;
-    if (icon) category.icon = icon;
-    if (order !== undefined) category.order = order;
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: "Nama kategori harus diisi",
+      });
+    }
 
+    const duplicate = await Category.findOne({
+      restaurant: category.restaurant._id,
+      name,
+      _id: { $ne: category._id },
+    });
+
+    if (duplicate) {
+      return res.status(400).json({
+        success: false,
+        message: "Kategori dengan nama tersebut sudah ada",
+      });
+    }
+
+    category.name = name;
     await category.save();
 
-    res.json({
+    return res.json({
       success: true,
       message: "Kategori berhasil diperbarui",
       category,
     });
   } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: err.message,
     });
   }
 };
-
-// ==================== DELETE CATEGORY ====================
 
 exports.deleteCategory = async (req, res) => {
   try {
     const { categoryId } = req.params;
 
     const category = await Category.findById(categoryId).populate("restaurant");
-
     if (!category) {
       return res.status(404).json({
         success: false,
@@ -163,117 +185,29 @@ exports.deleteCategory = async (req, res) => {
       });
     }
 
-    // Cek owner
     if (category.restaurant.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: "Anda tidak memiliki akses",
+      });
+    }
+
+    const usedByMenu = await Menu.exists({ category: category._id });
+    if (usedByMenu) {
+      return res.status(409).json({
+        success: false,
+        message: "Kategori tidak bisa dihapus karena masih dipakai oleh menu",
       });
     }
 
     await Category.findByIdAndDelete(categoryId);
 
-    res.json({
+    return res.json({
       success: true,
       message: "Kategori berhasil dihapus",
     });
   } catch (err) {
-    res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
-};
-
-// ==================== ADD MENU TO CATEGORY ====================
-
-exports.addMenuToCategory = async (req, res) => {
-  try {
-    const { categoryId } = req.params;
-    const { menuId } = req.body;
-
-    if (!menuId) {
-      return res.status(400).json({
-        success: false,
-        message: "Menu ID harus diisi",
-      });
-    }
-
-    const category = await Category.findById(categoryId).populate("restaurant");
-
-    if (!category) {
-      return res.status(404).json({
-        success: false,
-        message: "Kategori tidak ditemukan",
-      });
-    }
-
-    // Cek owner
-    if (category.restaurant.owner.toString() !== req.user._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: "Anda tidak memiliki akses",
-      });
-    }
-
-    if (category.menus.includes(menuId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Menu sudah ada di kategori ini",
-      });
-    }
-
-    category.menus.push(menuId);
-    await category.save();
-
-    res.json({
-      success: true,
-      message: "Menu berhasil ditambahkan ke kategori",
-      category,
-    });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
-};
-
-// ==================== REMOVE MENU FROM CATEGORY ====================
-
-exports.removeMenuFromCategory = async (req, res) => {
-  try {
-    const { categoryId, menuId } = req.params;
-
-    const category = await Category.findById(categoryId).populate("restaurant");
-
-    if (!category) {
-      return res.status(404).json({
-        success: false,
-        message: "Kategori tidak ditemukan",
-      });
-    }
-
-    // Cek owner
-    if (category.restaurant.owner.toString() !== req.user._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: "Anda tidak memiliki akses",
-      });
-    }
-
-    category.menus = category.menus.filter(
-      (id) => id.toString() !== menuId
-    );
-    await category.save();
-
-    res.json({
-      success: true,
-      message: "Menu berhasil dihapus dari kategori",
-      category,
-    });
-  } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: err.message,
     });

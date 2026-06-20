@@ -1,6 +1,23 @@
 const Menu = require("../models/Menu");
 const Restaurant = require("../models/Restaurant");
+const Category = require("../models/Category");
 const boyerMoore = require("../utils/boyerMoore");
+
+function normalizeVariants(variants) {
+  if (!Array.isArray(variants)) return [];
+
+  return variants
+    .map((variant) => ({
+      name: String(variant?.name || "").trim(),
+      price: Number(variant?.price || 0),
+    }))
+    .filter((variant) => variant.name && Number.isFinite(variant.price) && variant.price >= 0);
+}
+
+async function resolveCategoryForRestaurant(restaurantId, categoryId) {
+  if (!categoryId) return null;
+  return Category.findOne({ _id: categoryId, restaurant: restaurantId });
+}
 
 // ==================== MENU CRUD ====================
 
@@ -10,17 +27,15 @@ exports.createMenu = async (req, res) => {
     const {
       name,
       description,
+      categoryId,
       category,
       price,
-      stock,
       image,
-      calories,
-      preparationTime,
-      spicy,
-      vegetarian,
+      variants,
+      isAvailable,
     } = req.body;
 
-    if (!name || !price) {
+    if (!name || price === undefined || price === null) {
       return res.status(400).json({
         success: false,
         message: "Name dan price harus diisi",
@@ -28,7 +43,6 @@ exports.createMenu = async (req, res) => {
     }
 
     const restaurant = await Restaurant.findById(restaurantId);
-
     if (!restaurant) {
       return res.status(404).json({
         success: false,
@@ -36,7 +50,6 @@ exports.createMenu = async (req, res) => {
       });
     }
 
-    // Cek owner
     if (restaurant.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
@@ -44,31 +57,41 @@ exports.createMenu = async (req, res) => {
       });
     }
 
+    const selectedCategory = await resolveCategoryForRestaurant(
+      restaurantId,
+      categoryId || category
+    );
+
+    if (!selectedCategory) {
+      return res.status(400).json({
+        success: false,
+        message: "Kategori tidak valid untuk restoran ini",
+      });
+    }
+
     const menu = await Menu.create({
       restaurant: restaurantId,
       name,
       description,
-      category: category || "Makanan",
+      category: selectedCategory._id,
       price,
-      stock: stock || 0,
       image,
-      calories,
-      preparationTime,
-      spicy: spicy || false,
-      vegetarian: vegetarian || false,
+      variants: normalizeVariants(variants),
+      isAvailable: isAvailable !== undefined ? !!isAvailable : true,
     });
 
-    // Tambahkan ke restaurant menus
     restaurant.menus.push(menu._id);
     await restaurant.save();
 
-    res.status(201).json({
+    const populatedMenu = await Menu.findById(menu._id).populate("category", "name");
+
+    return res.status(201).json({
       success: true,
       message: "Menu berhasil dibuat",
-      menu,
+      menu: populatedMenu,
     });
   } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: err.message,
     });
@@ -82,12 +105,8 @@ exports.getRestaurantMenus = async (req, res) => {
 
     const query = { restaurant: restaurantId };
 
-    if (category) {
-      query.category = category;
-    }
-    if (available !== undefined) {
-      query.isAvailable = available === "true";
-    }
+    if (category) query.category = category;
+    if (available !== undefined) query.isAvailable = available === "true";
 
     const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
     const pageSize = Math.max(parseInt(limit, 10) || 20, 1);
@@ -97,11 +116,12 @@ exports.getRestaurantMenus = async (req, res) => {
 
     const menus = await Menu.find(query)
       .populate("restaurant", "name phone address")
+      .populate("category", "name")
       .sort({ createdAt: -1 })
       .skip((pageNumber - 1) * pageSize)
       .limit(pageSize);
 
-    res.json({
+    return res.json({
       success: true,
       total: totalMenus,
       page: pageNumber,
@@ -110,7 +130,7 @@ exports.getRestaurantMenus = async (req, res) => {
       menus,
     });
   } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: err.message,
     });
@@ -122,7 +142,8 @@ exports.getMenuById = async (req, res) => {
     const { menuId } = req.params;
 
     const menu = await Menu.findById(menuId)
-      .populate("restaurant");
+      .populate("restaurant")
+      .populate("category", "name");
 
     if (!menu) {
       return res.status(404).json({
@@ -131,12 +152,12 @@ exports.getMenuById = async (req, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       menu,
     });
   } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: err.message,
     });
@@ -149,18 +170,17 @@ exports.updateMenu = async (req, res) => {
     const {
       name,
       description,
+      categoryId,
       category,
       price,
-      stock,
       image,
-      calories,
-      preparationTime,
-      spicy,
-      vegetarian,
+      variants,
       isAvailable,
     } = req.body;
 
-    const menu = await Menu.findById(menuId).populate("restaurant");
+    const menu = await Menu.findById(menuId)
+      .populate("restaurant")
+      .populate("category", "name");
 
     if (!menu) {
       return res.status(404).json({
@@ -169,7 +189,6 @@ exports.updateMenu = async (req, res) => {
       });
     }
 
-    // Cek owner
     if (menu.restaurant.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
@@ -177,27 +196,40 @@ exports.updateMenu = async (req, res) => {
       });
     }
 
-    if (name) menu.name = name;
-    if (description) menu.description = description;
-    if (category) menu.category = category;
-    if (price) menu.price = price;
-    if (stock !== undefined) menu.stock = stock;
-    if (image) menu.image = image;
-    if (calories) menu.calories = calories;
-    if (preparationTime) menu.preparationTime = preparationTime;
-    if (spicy !== undefined) menu.spicy = spicy;
-    if (vegetarian !== undefined) menu.vegetarian = vegetarian;
-    if (isAvailable !== undefined) menu.isAvailable = isAvailable;
+    if (categoryId || category) {
+      const selectedCategory = await resolveCategoryForRestaurant(
+        menu.restaurant._id,
+        categoryId || category
+      );
+
+      if (!selectedCategory) {
+        return res.status(400).json({
+          success: false,
+          message: "Kategori tidak valid untuk restoran ini",
+        });
+      }
+
+      menu.category = selectedCategory._id;
+    }
+
+    if (name !== undefined) menu.name = name;
+    if (description !== undefined) menu.description = description;
+    if (price !== undefined) menu.price = price;
+    if (image !== undefined) menu.image = image;
+    if (variants !== undefined) menu.variants = normalizeVariants(variants);
+    if (isAvailable !== undefined) menu.isAvailable = !!isAvailable;
 
     await menu.save();
 
-    res.json({
+    const refreshedMenu = await Menu.findById(menu._id).populate("category", "name");
+
+    return res.json({
       success: true,
       message: "Menu berhasil diperbarui",
-      menu,
+      menu: refreshedMenu,
     });
   } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: err.message,
     });
@@ -217,7 +249,6 @@ exports.deleteMenu = async (req, res) => {
       });
     }
 
-    // Cek owner
     if (menu.restaurant.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
@@ -229,17 +260,16 @@ exports.deleteMenu = async (req, res) => {
 
     await Menu.findByIdAndDelete(menuId);
 
-    // Hapus dari restaurant menus
     await Restaurant.findByIdAndUpdate(restaurantId, {
       $pull: { menus: menuId },
     });
 
-    res.json({
+    return res.json({
       success: true,
       message: "Menu berhasil dihapus",
     });
   } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: err.message,
     });
@@ -259,16 +289,14 @@ exports.searchMenuByName = async (req, res) => {
       });
     }
 
-    // Cari semua menu yang available
     const allMenus = await Menu.find({ isAvailable: true })
-      .populate("restaurant");
+      .populate("restaurant")
+      .populate("category", "name");
 
-    // Gunakan Boyer-Moore untuk search
     const searchResults = allMenus.filter((menu) => {
       return boyerMoore(menu.name.toLowerCase(), q.toLowerCase());
     });
 
-    // Group hasil berdasarkan restaurant
     const groupedResults = {};
 
     searchResults.forEach((menu) => {
@@ -291,7 +319,7 @@ exports.searchMenuByName = async (req, res) => {
 
     const results = Object.values(groupedResults);
 
-    res.json({
+    return res.json({
       success: true,
       query: q,
       total: searchResults.length,
@@ -299,7 +327,7 @@ exports.searchMenuByName = async (req, res) => {
       results,
     });
   } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: err.message,
     });
