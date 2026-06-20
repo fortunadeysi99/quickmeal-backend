@@ -126,7 +126,21 @@ exports.getAllRestaurants = async (req, res) => {
 exports.updateRestaurant = async (req, res) => {
   try {
     const { restaurantId } = req.params;
-    const { name, description, address, phone, categories, banner, logo, openingHours } = req.body;
+    const {
+      name,
+      description,
+      address,
+      phone,
+      categories,
+      banner,
+      logo,
+      removeBanner,
+      removeLogo,
+      openingHours,
+      operatingStatus,
+      latitude,
+      longitude,
+    } = req.body;
 
     const restaurant = await Restaurant.findById(restaurantId);
 
@@ -152,7 +166,32 @@ exports.updateRestaurant = async (req, res) => {
     if (categories) restaurant.categories = categories;
     if (banner) restaurant.banner = banner;
     if (logo) restaurant.logo = logo;
-    if (openingHours) restaurant.openingHours = openingHours;
+    if (removeBanner === true) restaurant.banner = null;
+    if (removeLogo === true) restaurant.logo = null;
+
+    if (openingHours && typeof openingHours === "object") {
+      restaurant.openingHours = openingHours;
+    }
+
+    if (operatingStatus) {
+      const allowed = ["open", "closed", "busy"];
+      if (!allowed.includes(operatingStatus)) {
+        return res.status(400).json({
+          success: false,
+          message: "Status operasional tidak valid",
+        });
+      }
+
+      restaurant.operatingStatus = operatingStatus;
+      restaurant.isOpen = operatingStatus !== "closed";
+    }
+
+    if (latitude !== undefined || longitude !== undefined) {
+      restaurant.location = {
+        latitude: latitude !== undefined ? parseFloat(latitude) : restaurant.location?.latitude,
+        longitude: longitude !== undefined ? parseFloat(longitude) : restaurant.location?.longitude,
+      };
+    }
 
     await restaurant.save();
 

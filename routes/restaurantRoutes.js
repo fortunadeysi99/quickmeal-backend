@@ -15,13 +15,15 @@ const { authorize } = require("../middleware/roleMiddleware");
 
 // Public routes
 router.get("/", getAllRestaurants);
-router.get("/:restaurantId", getRestaurantById);
 
 // Protected routes - Owner
 router.post("/", protect, authorize("owner"), createRestaurant);
 router.get("/owner/my-restaurants", protect, authorize("owner"), getMyRestaurants);
 router.put("/:restaurantId", protect, authorize("owner"), updateRestaurant);
 router.delete("/:restaurantId", protect, authorize("owner"), deleteRestaurant);
+
+// Public detail route
+router.get("/:restaurantId", getRestaurantById);
 
 // Location routes
 router.put("/:restaurantId/location", protect, authorize("owner"), updateRestaurantLocation);

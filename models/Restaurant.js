@@ -55,6 +55,11 @@ const restaurantSchema = new mongoose.Schema(
       default: 0,
     },
     // Status operasional restoran
+    operatingStatus: {
+      type: String,
+      enum: ["open", "closed", "busy"],
+      default: "open",
+    },
     isOpen: {
       type: Boolean,
       default: true,
