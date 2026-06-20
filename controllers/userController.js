@@ -1,6 +1,8 @@
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 
+const VALID_ROLES = ["admin", "owner", "user"];
+
 // ==================== PROFILE ====================
 
 exports.getMyProfile = async (req, res) => {
@@ -211,14 +213,202 @@ exports.getWishlist = async (req, res) => {
 
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await User.find()
+    const page = Math.max(parseInt(req.query.page || "1", 10), 1);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit || "10", 10), 1),
+      50
+    );
+    const role = req.query.role;
+    const search = (req.query.search || "").trim();
+
+    const query = {};
+
+    if (role && VALID_ROLES.includes(role)) {
+      query.role = role;
+    }
+
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const total = await User.countDocuments(query);
+    const totalPages = Math.max(Math.ceil(total / limit), 1);
+
+    const users = await User.find(query)
       .select("-password")
-      .populate("restaurants");
+      .populate("restaurants")
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
 
     res.json({
       success: true,
-      total: users.length,
+      page,
+      limit,
+      total,
+      totalPages,
       users,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+exports.getUserDetail = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId)
+      .select("-password")
+      .populate("restaurants")
+      .populate("wishlist");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User tidak ditemukan",
+      });
+    }
+
+    res.json({
+      success: true,
+      user,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+exports.createUserByAdmin = async (req, res) => {
+  try {
+    const { name, email, password, role = "user", phone, address, avatar } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Nama, email, dan password wajib diisi",
+      });
+    }
+
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Email tidak valid",
+      });
+    }
+
+    if (!VALID_ROLES.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Role tidak valid",
+      });
+    }
+
+    const exists = await User.findOne({ email: email.toLowerCase() });
+    if (exists) {
+      return res.status(400).json({
+        success: false,
+        message: "Email sudah digunakan",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = await User.create({
+      name,
+      email: email.toLowerCase(),
+      password: hashedPassword,
+      role,
+      phone,
+      address,
+      avatar,
+    });
+
+    const user = await User.findById(newUser._id).select("-password");
+
+    res.status(201).json({
+      success: true,
+      message: "User berhasil dibuat",
+      user,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+exports.updateUserByAdmin = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { name, email, role, password, phone, address, avatar } = req.body;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User tidak ditemukan",
+      });
+    }
+
+    if (role && !VALID_ROLES.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Role tidak valid",
+      });
+    }
+
+    if (email && email !== user.email) {
+      if (!/\S+@\S+\.\S+/.test(email)) {
+        return res.status(400).json({
+          success: false,
+          message: "Email tidak valid",
+        });
+      }
+
+      const emailExists = await User.findOne({
+        email: email.toLowerCase(),
+        _id: { $ne: userId },
+      });
+
+      if (emailExists) {
+        return res.status(400).json({
+          success: false,
+          message: "Email sudah digunakan",
+        });
+      }
+
+      user.email = email.toLowerCase();
+    }
+
+    if (name) user.name = name;
+    if (role) user.role = role;
+    if (phone !== undefined) user.phone = phone;
+    if (address !== undefined) user.address = address;
+    if (avatar !== undefined) user.avatar = avatar;
+    if (password) {
+      user.password = await bcrypt.hash(password, 10);
+    }
+
+    await user.save();
+
+    const updatedUser = await User.findById(user._id).select("-password");
+
+    res.json({
+      success: true,
+      message: "User berhasil diperbarui",
+      user: updatedUser,
     });
   } catch (err) {
     res.status(500).json({

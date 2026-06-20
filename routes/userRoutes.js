@@ -7,6 +7,9 @@ const {
   removeFromWishlist,
   getWishlist,
   getAllUsers,
+  getUserDetail,
+  createUserByAdmin,
+  updateUserByAdmin,
   deleteUser,
 } = require("../controllers/userController");
 const { protect } = require("../middleware/authMiddleware");
@@ -24,6 +27,9 @@ router.get("/wishlist", protect, getWishlist);
 
 // Admin routes
 router.get("/", protect, authorize("admin"), getAllUsers);
+router.post("/", protect, authorize("admin"), createUserByAdmin);
+router.get("/:userId", protect, authorize("admin"), getUserDetail);
+router.put("/:userId", protect, authorize("admin"), updateUserByAdmin);
 router.delete("/:userId", protect, authorize("admin"), deleteUser);
 
 module.exports = router;
