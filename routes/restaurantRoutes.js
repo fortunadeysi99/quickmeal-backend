@@ -21,16 +21,16 @@ router.get("/", getAllRestaurants);
 // Protected routes - Owner
 router.post("/", protect, authorize("owner"), createRestaurant);
 router.get("/owner/my-restaurants", protect, authorize("owner"), getMyRestaurants);
-router.put("/:restaurantId", protect, authorize("owner"), updateRestaurant);
-router.put("/:restaurantId/status", protect, authorize("owner"), updateRestaurantStatus);
-router.put("/:restaurantId/schedule", protect, authorize("owner"), updateRestaurantSchedule);
-router.delete("/:restaurantId", protect, authorize("owner"), deleteRestaurant);
+router.put("/:restaurantId", protect, authorize("owner", "admin"), updateRestaurant);
+router.put("/:restaurantId/status", protect, authorize("owner", "admin"), updateRestaurantStatus);
+router.put("/:restaurantId/schedule", protect, authorize("owner", "admin"), updateRestaurantSchedule);
+router.delete("/:restaurantId", protect, authorize("owner", "admin"), deleteRestaurant);
 
 // Public detail route
 router.get("/:restaurantId", getRestaurantById);
 
 // Location routes
-router.put("/:restaurantId/location", protect, authorize("owner"), updateRestaurantLocation);
+router.put("/:restaurantId/location", protect, authorize("owner", "admin"), updateRestaurantLocation);
 
 // Categories routes
 router.post("/:restaurantId/categories", protect, authorize("owner"), addCategories);

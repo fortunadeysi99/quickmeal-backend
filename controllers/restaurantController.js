@@ -90,10 +90,11 @@ exports.getRestaurantById = async (req, res) => {
 
 exports.getAllRestaurants = async (req, res) => {
   try {
-    const { category, search } = req.query;
+    const { category, search, owner, operatingStatus, page = 1, limit = 10, sort = "latest" } = req.query;
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const pageSize = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 50);
 
-    // let query = { isOpen: true };
-    let query = {  };
+    const query = {};
 
     if (category) {
       query.categories = { $in: [category] };
@@ -106,13 +107,44 @@ exports.getAllRestaurants = async (req, res) => {
       ];
     }
 
+    if (owner) {
+      const owners = await User.find({
+        name: { $regex: owner, $options: "i" },
+        status: "active",
+      }).select("_id");
+      query.owner = { $in: owners.map((item) => item._id) };
+    }
+
+    if (operatingStatus && ["open", "closed", "busy"].includes(operatingStatus)) {
+      query.operatingStatus = operatingStatus;
+    }
+
+    const sortQuery =
+      sort === "oldest"
+        ? { createdAt: 1 }
+        : sort === "name_asc"
+          ? { name: 1 }
+          : sort === "name_desc"
+            ? { name: -1 }
+            : { createdAt: -1 };
+
+    const total = await Restaurant.countDocuments(query);
+    const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+    const skip = (pageNumber - 1) * pageSize;
+
     const restaurants = await Restaurant.find(query)
+      .sort(sortQuery)
+      .skip(skip)
+      .limit(pageSize)
       .populate("menus")
-      .populate("owner", "name");
+      .populate("owner", "name email phone status createdAt");
 
     res.json({
       success: true,
-      total: restaurants.length,
+      total,
+      page: pageNumber,
+      limit: pageSize,
+      totalPages,
       restaurants,
     });
   } catch (err) {
@@ -149,8 +181,10 @@ exports.updateRestaurant = async (req, res) => {
       });
     }
 
-    // Cek owner
-    if (restaurant.owner.toString() !== req.user._id.toString()) {
+    const isAdmin = req.user?.role === "admin";
+
+    // Cek owner/admin
+    if (!isAdmin && restaurant.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: "Anda tidak memiliki akses untuk mengubah restoran ini",
@@ -210,7 +244,9 @@ exports.updateRestaurantStatus = async (req, res) => {
       });
     }
 
-    if (restaurant.owner.toString() !== req.user._id.toString()) {
+    const isAdmin = req.user?.role === "admin";
+
+    if (!isAdmin && restaurant.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: "Anda tidak memiliki akses untuk mengubah restoran ini",
@@ -254,7 +290,9 @@ exports.updateRestaurantSchedule = async (req, res) => {
       });
     }
 
-    if (restaurant.owner.toString() !== req.user._id.toString()) {
+    const isAdmin = req.user?.role === "admin";
+
+    if (!isAdmin && restaurant.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: "Anda tidak memiliki akses untuk mengubah restoran ini",
@@ -300,8 +338,10 @@ exports.updateRestaurantLocation = async (req, res) => {
       });
     }
 
-    // Cek owner
-    if (restaurant.owner.toString() !== req.user._id.toString()) {
+    const isAdmin = req.user?.role === "admin";
+
+    // Cek owner/admin
+    if (!isAdmin && restaurant.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: "Anda tidak memiliki akses",
@@ -341,12 +381,44 @@ exports.deleteRestaurant = async (req, res) => {
       });
     }
 
-    // Cek owner
-    if (restaurant.owner.toString() !== req.user._id.toString()) {
+    const isAdmin = req.user?.role === "admin";
+
+    // Owner hanya boleh hapus restoran miliknya
+    if (!isAdmin && restaurant.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: "Anda tidak memiliki akses",
       });
+    }
+
+    if (isAdmin) {
+      // Saat admin menghapus restoran: seluruh restoran owner ikut dihapus,
+      // menu owner ikut dibersihkan, lalu akun owner di-soft-delete.
+      const ownerId = restaurant.owner;
+      const ownerRestaurants = await Restaurant.find({ owner: ownerId }).select("_id menus");
+      const ownerRestaurantIds = ownerRestaurants.map((item) => item._id);
+      const ownerMenuIds = ownerRestaurants.flatMap((item) => item.menus || []);
+
+      if (ownerMenuIds.length > 0) {
+        await Menu.deleteMany({ _id: { $in: ownerMenuIds } });
+      }
+
+      await Restaurant.deleteMany({ _id: { $in: ownerRestaurantIds } });
+
+      await User.findByIdAndUpdate(ownerId, {
+        status: "deleted",
+        deletedAt: new Date(),
+        restaurants: [],
+      });
+
+      return res.json({
+        success: true,
+        message: "Restoran dan owner berhasil dihapus",
+      });
+    }
+
+    if (restaurant.menus?.length > 0) {
+      await Menu.deleteMany({ _id: { $in: restaurant.menus } });
     }
 
     await Restaurant.findByIdAndDelete(restaurantId);
