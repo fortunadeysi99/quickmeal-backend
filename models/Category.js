@@ -12,12 +12,25 @@ const categorySchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    status: {
+      type: String,
+      enum: ["active", "deleted"],
+      default: "active",
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
   }
 );
 
-categorySchema.index({ restaurant: 1, name: 1 }, { unique: true });
+categorySchema.index(
+  { restaurant: 1, name: 1 },
+  { unique: true, partialFilterExpression: { status: "active" } }
+);
 
 module.exports = mongoose.model("Category", categorySchema);

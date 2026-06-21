@@ -33,7 +33,11 @@ exports.createCategory = async (req, res) => {
       });
     }
 
-    const existing = await Category.findOne({ restaurant: restaurantId, name });
+    const existing = await Category.findOne({
+      restaurant: restaurantId,
+      name,
+      status: { $ne: "deleted" },
+    });
     if (existing) {
       return res.status(400).json({
         success: false,
@@ -62,12 +66,23 @@ exports.createCategory = async (req, res) => {
 exports.getCategories = async (req, res) => {
   try {
     const { restaurantId } = req.params;
+    const { status } = req.query;
 
-    const categories = await Category.find({ restaurant: restaurantId }).sort({ name: 1 });
+    const query = { restaurant: restaurantId };
+    if (status === "deleted") {
+      query.status = "deleted";
+    } else if (status !== "all") {
+      query.status = { $ne: "deleted" };
+    }
+
+    const categories = await Category.find(query).sort({ name: 1 });
 
     const categoriesWithUsage = await Promise.all(
       categories.map(async (category) => {
-        const menuCount = await Menu.countDocuments({ category: category._id });
+        const menuCount = await Menu.countDocuments({
+          category: category._id,
+          status: { $ne: "deleted" },
+        });
         return {
           ...category.toObject(),
           menuCount,
@@ -91,8 +106,16 @@ exports.getCategories = async (req, res) => {
 exports.getCategoryById = async (req, res) => {
   try {
     const { categoryId } = req.params;
+    const { status } = req.query;
 
-    const category = await Category.findById(categoryId);
+    const categoryFilter = { _id: categoryId };
+    if (status === "deleted") {
+      categoryFilter.status = "deleted";
+    } else if (status !== "all") {
+      categoryFilter.status = { $ne: "deleted" };
+    }
+
+    const category = await Category.findOne(categoryFilter);
     if (!category) {
       return res.status(404).json({
         success: false,
@@ -100,7 +123,10 @@ exports.getCategoryById = async (req, res) => {
       });
     }
 
-    const menuCount = await Menu.countDocuments({ category: category._id });
+    const menuCount = await Menu.countDocuments({
+      category: category._id,
+      status: { $ne: "deleted" },
+    });
 
     return res.json({
       success: true,
@@ -122,7 +148,10 @@ exports.updateCategory = async (req, res) => {
     const { categoryId } = req.params;
     const name = normalizedName(req.body.name);
 
-    const category = await Category.findById(categoryId).populate("restaurant");
+    const category = await Category.findOne({
+      _id: categoryId,
+      status: { $ne: "deleted" },
+    }).populate("restaurant");
     if (!category) {
       return res.status(404).json({
         success: false,
@@ -147,6 +176,7 @@ exports.updateCategory = async (req, res) => {
     const duplicate = await Category.findOne({
       restaurant: category.restaurant._id,
       name,
+      status: { $ne: "deleted" },
       _id: { $ne: category._id },
     });
 
@@ -177,7 +207,10 @@ exports.deleteCategory = async (req, res) => {
   try {
     const { categoryId } = req.params;
 
-    const category = await Category.findById(categoryId).populate("restaurant");
+    const category = await Category.findOne({
+      _id: categoryId,
+      status: { $ne: "deleted" },
+    }).populate("restaurant");
     if (!category) {
       return res.status(404).json({
         success: false,
@@ -192,7 +225,10 @@ exports.deleteCategory = async (req, res) => {
       });
     }
 
-    const usedByMenu = await Menu.exists({ category: category._id });
+    const usedByMenu = await Menu.exists({
+      category: category._id,
+      status: { $ne: "deleted" },
+    });
     if (usedByMenu) {
       return res.status(409).json({
         success: false,
@@ -200,7 +236,9 @@ exports.deleteCategory = async (req, res) => {
       });
     }
 
-    await Category.findByIdAndDelete(categoryId);
+    category.status = "deleted";
+    category.deletedAt = new Date();
+    await category.save();
 
     return res.json({
       success: true,

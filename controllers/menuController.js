@@ -16,7 +16,11 @@ function normalizeVariants(variants) {
 
 async function resolveCategoryForRestaurant(restaurantId, categoryId) {
   if (!categoryId) return null;
-  return Category.findOne({ _id: categoryId, restaurant: restaurantId });
+  return Category.findOne({
+    _id: categoryId,
+    restaurant: restaurantId,
+    status: { $ne: "deleted" },
+  });
 }
 
 // ==================== MENU CRUD ====================
@@ -101,9 +105,15 @@ exports.createMenu = async (req, res) => {
 exports.getRestaurantMenus = async (req, res) => {
   try {
     const { restaurantId } = req.params;
-    const { category, page = 1, limit = 20, available } = req.query;
+    const { category, page = 1, limit = 20, available, status } = req.query;
 
     const query = { restaurant: restaurantId };
+
+    if (status === "deleted") {
+      query.status = "deleted";
+    } else if (status !== "all") {
+      query.status = { $ne: "deleted" };
+    }
 
     if (category) query.category = category;
     if (available !== undefined) query.isAvailable = available === "true";
@@ -140,8 +150,16 @@ exports.getRestaurantMenus = async (req, res) => {
 exports.getMenuById = async (req, res) => {
   try {
     const { menuId } = req.params;
+    const { status } = req.query;
 
-    const menu = await Menu.findById(menuId)
+    const menuFilter = { _id: menuId };
+    if (status === "deleted") {
+      menuFilter.status = "deleted";
+    } else if (status !== "all") {
+      menuFilter.status = { $ne: "deleted" };
+    }
+
+    const menu = await Menu.findOne(menuFilter)
       .populate("restaurant")
       .populate("category", "name");
 
@@ -178,7 +196,10 @@ exports.updateMenu = async (req, res) => {
       isAvailable,
     } = req.body;
 
-    const menu = await Menu.findById(menuId)
+    const menu = await Menu.findOne({
+      _id: menuId,
+      status: { $ne: "deleted" },
+    })
       .populate("restaurant")
       .populate("category", "name");
 
@@ -240,7 +261,10 @@ exports.deleteMenu = async (req, res) => {
   try {
     const { menuId } = req.params;
 
-    const menu = await Menu.findById(menuId).populate("restaurant");
+    const menu = await Menu.findOne({
+      _id: menuId,
+      status: { $ne: "deleted" },
+    }).populate("restaurant");
 
     if (!menu) {
       return res.status(404).json({
@@ -258,7 +282,9 @@ exports.deleteMenu = async (req, res) => {
 
     const restaurantId = menu.restaurant._id;
 
-    await Menu.findByIdAndDelete(menuId);
+    menu.status = "deleted";
+    menu.deletedAt = new Date();
+    await menu.save();
 
     await Restaurant.findByIdAndUpdate(restaurantId, {
       $pull: { menus: menuId },
@@ -289,7 +315,10 @@ exports.searchMenuByName = async (req, res) => {
       });
     }
 
-    const allMenus = await Menu.find({ isAvailable: true })
+    const allMenus = await Menu.find({
+      isAvailable: true,
+      status: { $ne: "deleted" },
+    })
       .populate("restaurant")
       .populate("category", "name");
 
