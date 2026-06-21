@@ -13,9 +13,9 @@ const { authorize } = require("../middleware/roleMiddleware");
 router.get("/restaurant/:restaurantId", getCategories);
 router.get("/:categoryId", getCategoryById);
 
-// Protected routes - Owner
-router.post("/restaurant/:restaurantId", protect, authorize("owner"), createCategory);
-router.put("/:categoryId", protect, authorize("owner"), updateCategory);
-router.delete("/:categoryId", protect, authorize("owner"), deleteCategory);
+// Protected routes - Owner and Admin
+router.post("/restaurant/:restaurantId", protect, authorize("owner", "admin"), createCategory);
+router.put("/:categoryId", protect, authorize("owner", "admin"), updateCategory);
+router.delete("/:categoryId", protect, authorize("owner", "admin"), deleteCategory);
 
 module.exports = router;

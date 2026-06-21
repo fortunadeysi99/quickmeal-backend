@@ -6,6 +6,12 @@ function normalizedName(value) {
   return String(value || "").trim();
 }
 
+function canManageRestaurant(reqUser, ownerId) {
+  if (!reqUser) return false;
+  if (reqUser.role === "admin") return true;
+  return ownerId.toString() === reqUser._id.toString();
+}
+
 exports.createCategory = async (req, res) => {
   try {
     const { restaurantId } = req.params;
@@ -26,7 +32,7 @@ exports.createCategory = async (req, res) => {
       });
     }
 
-    if (restaurant.owner.toString() !== req.user._id.toString()) {
+    if (!canManageRestaurant(req.user, restaurant.owner)) {
       return res.status(403).json({
         success: false,
         message: "Anda tidak memiliki akses",
@@ -159,7 +165,7 @@ exports.updateCategory = async (req, res) => {
       });
     }
 
-    if (category.restaurant.owner.toString() !== req.user._id.toString()) {
+    if (!canManageRestaurant(req.user, category.restaurant.owner)) {
       return res.status(403).json({
         success: false,
         message: "Anda tidak memiliki akses",
@@ -218,7 +224,7 @@ exports.deleteCategory = async (req, res) => {
       });
     }
 
-    if (category.restaurant.owner.toString() !== req.user._id.toString()) {
+    if (!canManageRestaurant(req.user, category.restaurant.owner)) {
       return res.status(403).json({
         success: false,
         message: "Anda tidak memiliki akses",

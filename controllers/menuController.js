@@ -3,6 +3,12 @@ const Restaurant = require("../models/Restaurant");
 const Category = require("../models/Category");
 const boyerMoore = require("../utils/boyerMoore");
 
+function canManageRestaurant(reqUser, ownerId) {
+  if (!reqUser) return false;
+  if (reqUser.role === "admin") return true;
+  return ownerId.toString() === reqUser._id.toString();
+}
+
 function normalizeVariants(variants) {
   if (!Array.isArray(variants)) return [];
 
@@ -54,7 +60,7 @@ exports.createMenu = async (req, res) => {
       });
     }
 
-    if (restaurant.owner.toString() !== req.user._id.toString()) {
+    if (!canManageRestaurant(req.user, restaurant.owner)) {
       return res.status(403).json({
         success: false,
         message: "Anda tidak memiliki akses",
@@ -210,7 +216,7 @@ exports.updateMenu = async (req, res) => {
       });
     }
 
-    if (menu.restaurant.owner.toString() !== req.user._id.toString()) {
+    if (!canManageRestaurant(req.user, menu.restaurant.owner)) {
       return res.status(403).json({
         success: false,
         message: "Anda tidak memiliki akses",
@@ -273,7 +279,7 @@ exports.deleteMenu = async (req, res) => {
       });
     }
 
-    if (menu.restaurant.owner.toString() !== req.user._id.toString()) {
+    if (!canManageRestaurant(req.user, menu.restaurant.owner)) {
       return res.status(403).json({
         success: false,
         message: "Anda tidak memiliki akses",
