@@ -151,10 +151,16 @@ exports.addToCart = async (req, res) => {
       await cart.save();
     }
 
-    await cart.populate({
-      path: "items.menu",
-      select: "name price image",
-    });
+    await cart.populate([
+      {
+        path: "restaurant",
+        select: "name address phone",
+      },
+      {
+        path: "items.menu",
+        select: "name price image",
+      },
+    ]);
 
     res.json({
       success: true,
@@ -173,7 +179,8 @@ exports.addToCart = async (req, res) => {
 
 exports.updateCartItem = async (req, res) => {
   try {
-    const { menuId, qty } = req.body;
+    const { menuId, qty, variantName } = req.body;
+    const normalizedVariantName = String(variantName || "").trim();
 
     if (!menuId || qty === undefined) {
       return res.status(400).json({
@@ -191,9 +198,12 @@ exports.updateCartItem = async (req, res) => {
       });
     }
 
-    const itemIndex = cart.items.findIndex(
-      (item) => item.menu.toString() === menuId
-    );
+    const itemIndex = cart.items.findIndex((item) => {
+      return (
+        item.menu.toString() === menuId &&
+        String(item.variantName || "").trim() === normalizedVariantName
+      );
+    });
 
     if (itemIndex === -1) {
       return res.status(404).json({
@@ -223,6 +233,17 @@ exports.updateCartItem = async (req, res) => {
 
     await cart.save();
 
+    await cart.populate([
+      {
+        path: "restaurant",
+        select: "name address phone",
+      },
+      {
+        path: "items.menu",
+        select: "name price image",
+      },
+    ]);
+
     res.json({
       success: true,
       message: "Cart berhasil diperbarui",
@@ -241,6 +262,7 @@ exports.updateCartItem = async (req, res) => {
 exports.removeFromCart = async (req, res) => {
   try {
     const { menuId } = req.params;
+    const normalizedVariantName = String(req.query.variantName || "").trim();
 
     if (!menuId) {
       return res.status(400).json({
@@ -258,7 +280,15 @@ exports.removeFromCart = async (req, res) => {
       });
     }
 
-    cart.items = cart.items.filter((item) => item.menu.toString() !== menuId);
+    if (normalizedVariantName.length > 0) {
+      cart.items = cart.items.filter((item) => {
+        const sameMenu = item.menu.toString() === menuId;
+        const sameVariant = String(item.variantName || "").trim() === normalizedVariantName;
+        return !(sameMenu && sameVariant);
+      });
+    } else {
+      cart.items = cart.items.filter((item) => item.menu.toString() !== menuId);
+    }
 
     if (cart.items.length === 0) {
       await Cart.deleteOne({ _id: cart._id });
@@ -272,6 +302,17 @@ exports.removeFromCart = async (req, res) => {
     cart.subtotal = cart.items.reduce((acc, item) => acc + item.subtotal, 0);
 
     await cart.save();
+
+    await cart.populate([
+      {
+        path: "restaurant",
+        select: "name address phone",
+      },
+      {
+        path: "items.menu",
+        select: "name price image",
+      },
+    ]);
 
     res.json({
       success: true,
