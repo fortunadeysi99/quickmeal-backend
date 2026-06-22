@@ -109,19 +109,22 @@ exports.getAllRestaurants = async (req, res) => {
     const {
       category,
       search,
+      searchMode,
       owner,
       operatingStatus,
       page = 1,
       limit = 10,
       sort = "latest",
+      includeLocationData,
       userLat,
       userLng,
     } = req.query;
     const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
     const pageSize = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 50);
+    const useLocationData = includeLocationData === true || includeLocationData === "true";
     const parsedUserLat = Number(userLat);
     const parsedUserLng = Number(userLng);
-    const hasUserLocation = Number.isFinite(parsedUserLat) && Number.isFinite(parsedUserLng);
+    const hasUserLocation = useLocationData && Number.isFinite(parsedUserLat) && Number.isFinite(parsedUserLng);
 
     const query = {};
 
@@ -130,12 +133,16 @@ exports.getAllRestaurants = async (req, res) => {
     }
 
     if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { description: { $regex: search, $options: "i" } },
-        { address: { $regex: search, $options: "i" } },
-        { categories: { $elemMatch: { $regex: search, $options: "i" } } },
-      ];
+      if (searchMode === "name_only") {
+        query.name = { $regex: search, $options: "i" };
+      } else {
+        query.$or = [
+          { name: { $regex: search, $options: "i" } },
+          { description: { $regex: search, $options: "i" } },
+          { address: { $regex: search, $options: "i" } },
+          { categories: { $elemMatch: { $regex: search, $options: "i" } } },
+        ];
+      }
     }
 
     if (owner) {
@@ -163,14 +170,14 @@ exports.getAllRestaurants = async (req, res) => {
       return {
         ...restaurant,
         distanceMeters:
-          hasUserLocation && hasRestaurantLocation
+          useLocationData && hasUserLocation && hasRestaurantLocation
             ? calculateDistanceMeters(parsedUserLat, parsedUserLng, latitude, longitude)
             : null,
       };
     });
 
     const sortedRestaurants = restaurantsWithDistance.sort((left, right) => {
-      if (sort === "nearest" && hasUserLocation) {
+      if (sort === "nearest" && useLocationData && hasUserLocation) {
         if (left.distanceMeters == null && right.distanceMeters == null) return 0;
         if (left.distanceMeters == null) return 1;
         if (right.distanceMeters == null) return -1;
