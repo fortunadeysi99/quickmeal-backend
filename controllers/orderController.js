@@ -2,6 +2,8 @@ const Order = require("../models/Order");
 const Menu = require("../models/Menu");
 const Cart = require("../models/Cart");
 const Restaurant = require("../models/Restaurant");
+const User = require("../models/User");
+const WalletTransaction = require("../models/WalletTransaction");
 
 // ==================== CREATE ORDER ====================
 
@@ -74,6 +76,30 @@ exports.createOrder = async (req, res) => {
     const tax = Math.round(subtotal * 0.1); // 10% tax
     const totalPrice = subtotal + deliveryFee + tax;
 
+    const normalizedPaymentMethod = paymentMethod || "cash";
+
+    let buyerUser = null;
+    let ownerUser = null;
+
+    if (normalizedPaymentMethod === "wallet") {
+      buyerUser = await User.findById(req.user._id);
+      ownerUser = await User.findById(restaurant.owner);
+
+      if (!buyerUser || !ownerUser) {
+        return res.status(404).json({
+          success: false,
+          message: "Akun user/owner tidak ditemukan",
+        });
+      }
+
+      if ((buyerUser.walletBalance || 0) < totalPrice) {
+        return res.status(400).json({
+          success: false,
+          message: "Saldo wallet tidak cukup",
+        });
+      }
+    }
+
     const order = await Order.create({
       user: req.user._id,
       restaurant: restaurantId,
@@ -84,8 +110,46 @@ exports.createOrder = async (req, res) => {
       totalPrice,
       deliveryAddress: deliveryAddress || {},
       notes: notes || "",
-      paymentMethod: paymentMethod || "cash",
+      paymentMethod: normalizedPaymentMethod,
+      paymentStatus: normalizedPaymentMethod === "wallet" ? "paid" : "pending",
     });
+
+    if (normalizedPaymentMethod === "wallet" && buyerUser && ownerUser) {
+      const buyerBefore = buyerUser.walletBalance || 0;
+      const ownerBefore = ownerUser.walletBalance || 0;
+
+      buyerUser.walletBalance = buyerBefore - totalPrice;
+      ownerUser.walletBalance = ownerBefore + totalPrice;
+
+      await buyerUser.save();
+      await ownerUser.save();
+
+      await WalletTransaction.create({
+        user: buyerUser._id,
+        direction: "out",
+        amount: totalPrice,
+        balanceBefore: buyerBefore,
+        balanceAfter: buyerUser.walletBalance,
+        type: "purchase",
+        order: order._id,
+        counterparty: ownerUser._id,
+        actor: buyerUser._id,
+        note: `Pembayaran order ${order._id}`,
+      });
+
+      await WalletTransaction.create({
+        user: ownerUser._id,
+        direction: "in",
+        amount: totalPrice,
+        balanceBefore: ownerBefore,
+        balanceAfter: ownerUser.walletBalance,
+        type: "sale",
+        order: order._id,
+        counterparty: buyerUser._id,
+        actor: buyerUser._id,
+        note: `Pendapatan order ${order._id}`,
+      });
+    }
 
     // Hapus cart user
     await Cart.findOneAndDelete({ user: req.user._id });

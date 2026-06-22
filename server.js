@@ -12,6 +12,7 @@ const orderRoutes = require("./routes/orderRoutes");
 const cartRoutes = require("./routes/cartRoutes");
 const categoryRoutes = require("./routes/categoryRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const walletRoutes = require("./routes/walletRoutes");
 
 dotenv.config();
 
@@ -38,6 +39,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/wallet", walletRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

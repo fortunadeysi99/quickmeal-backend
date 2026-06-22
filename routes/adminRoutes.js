@@ -14,6 +14,7 @@ router.get("/restaurants", adminController.getAllRestaurants);
 router.get("/menus", adminController.getAllMenus);
 router.get("/orders", adminController.getOrders);
 router.get("/users/:userId/orders", adminController.getOrdersByUser);
+router.post("/wallet/topup", adminController.topupWalletAsAdmin);
 
 // Admin update category
 router.put("/categories/:categoryId", adminController.updateCategoryAsAdmin);

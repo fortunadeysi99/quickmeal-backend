@@ -39,7 +39,7 @@ exports.getCart = async (req, res) => {
 
 exports.addToCart = async (req, res) => {
   try {
-    const { menuId, qty, restaurantId } = req.body;
+    const { menuId, qty, restaurantId, variantName, variantPrice } = req.body;
 
     if (!menuId || !qty || !restaurantId) {
       return res.status(400).json({
@@ -71,6 +71,23 @@ exports.addToCart = async (req, res) => {
       });
     }
 
+    const normalizedVariantName = String(variantName || "").trim();
+    const hasVariant = normalizedVariantName.length > 0;
+    const selectedVariant = hasVariant
+      ? (menu.variants || []).find((variant) => String(variant.name || "").trim() === normalizedVariantName)
+      : null;
+
+    if (hasVariant && !selectedVariant) {
+      return res.status(400).json({
+        success: false,
+        message: "Varian menu tidak valid",
+      });
+    }
+
+    const unitPrice = hasVariant
+      ? Number(selectedVariant?.price || variantPrice || menu.price)
+      : menu.price;
+
     let cart = await Cart.findOne({ user: req.user._id });
 
     // Jika belum ada cart
@@ -81,15 +98,17 @@ exports.addToCart = async (req, res) => {
         items: [
           {
             menu: menuId,
-            name: menu.name,
-            price: menu.price,
+            name: hasVariant ? `${menu.name} (${normalizedVariantName})` : menu.name,
+            price: unitPrice,
             image: menu.image,
+            variantName: hasVariant ? normalizedVariantName : null,
+            variantPrice: hasVariant ? unitPrice : null,
             qty,
-            subtotal: menu.price * qty,
+            subtotal: unitPrice * qty,
           },
         ],
         totalItems: qty,
-        subtotal: menu.price * qty,
+        subtotal: unitPrice * qty,
       });
     } else {
       // Jika cart dari restaurant berbeda
@@ -102,7 +121,9 @@ exports.addToCart = async (req, res) => {
 
       // Cek apakah menu sudah ada di cart
       const existingItem = cart.items.findIndex(
-        (item) => item.menu.toString() === menuId
+        (item) =>
+          item.menu.toString() === menuId &&
+          String(item.variantName || "") === (hasVariant ? normalizedVariantName : "")
       );
 
       if (existingItem > -1) {
@@ -113,11 +134,13 @@ exports.addToCart = async (req, res) => {
         // Tambah item baru
         cart.items.push({
           menu: menuId,
-          name: menu.name,
-          price: menu.price,
+          name: hasVariant ? `${menu.name} (${normalizedVariantName})` : menu.name,
+          price: unitPrice,
           image: menu.image,
+          variantName: hasVariant ? normalizedVariantName : null,
+          variantPrice: hasVariant ? unitPrice : null,
           qty,
-          subtotal: menu.price * qty,
+          subtotal: unitPrice * qty,
         });
       }
 

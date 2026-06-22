@@ -188,6 +188,90 @@ GET /api/restaurants?category=Indonesian&search=Nasi
 GET /api/restaurants/{restaurantId}
 ```
 
+---
+
+## 🔎 Advanced Search (Boyer-Moore)
+
+Endpoint ini dipakai untuk halaman pencarian user/admin/owner dengan pencocokan berbasis Boyer-Moore pada beberapa field sekaligus:
+
+- nama restoran
+- deskripsi restoran
+- nama menu
+- deskripsi menu
+- nama kategori
+- nama varian
+
+### Endpoint
+```
+GET /api/menus/search?q={keyword}&category={opsional}&userLat={opsional}&userLng={opsional}&maxDistance={opsional-meter}&menuLimit={opsional}
+```
+
+### Contoh Request
+```
+GET /api/menus/search?q=ayam&category=nusantara&userLat=-6.2000&userLng=106.8166&maxDistance=5000&menuLimit=3
+```
+
+### Contoh Response (ringkas)
+```json
+{
+  "success": true,
+  "query": "ayam",
+  "total": 7,
+  "restaurantsFound": 2,
+  "appliedFilters": {
+    "category": "nusantara",
+    "maxDistance": 5000,
+    "menuLimit": 3
+  },
+  "results": [
+    {
+      "restaurant": {
+        "_id": "665abc...",
+        "name": "Ayam Bakar Sari",
+        "description": "Spesialis ayam bakar madu",
+        "address": "Jakarta Selatan",
+        "logo": "https://...",
+        "location": { "latitude": -6.21, "longitude": 106.81 },
+        "distanceMeters": 843
+      },
+      "menus": [
+        { "_id": "m1", "name": "Ayam Bakar Madu", "price": 28000 },
+        { "_id": "m2", "name": "Ayam Goreng Lengkuas", "price": 25000 }
+      ],
+      "totalMatchedMenus": 5,
+      "hasMoreMenus": true,
+      "matchedOn": ["restaurant_name", "menu_name", "menu_description", "variant"]
+    }
+  ]
+}
+```
+
+### Contoh Perhitungan Manual Boyer-Moore
+
+Kasus:
+
+- text: `ayam bakar madu`
+- pattern: `madu`
+
+Langkah:
+
+1. Buat tabel bad-character dari pattern `madu`:
+`m -> 0, a -> 1, d -> 2, u -> 3`
+2. Align pattern di text dari kiri, bandingkan dari karakter paling kanan pattern (`u`).
+3. Jika mismatch, geser sejauh `max(1, j - lastIndex(charMismatch))`.
+4. Ulangi sampai semua karakter pattern cocok.
+
+Simulasi ringkas:
+
+- Shift awal `s=0`, bandingkan kanan pattern `u` dengan text posisi `3` (`m`) -> mismatch.
+- `j=3`, `lastIndex('m')=0`, geser `max(1, 3-0)=3`, jadi `s=3`.
+- Ulangi, posisi `s=3`, kanan pattern `u` bandingkan text posisi `6` (`k`) -> mismatch.
+- `lastIndex('k')=-1`, geser `max(1, 3-(-1))=4`, jadi `s=7`.
+- Posisi `s=7`, substring text mulai `7` adalah `madu` -> cocok seluruh karakter.
+- Hasil: pattern ditemukan.
+
+Dengan pendekatan ini, pencarian menghindari perbandingan karakter satu per satu dari kiri seperti metode naive.
+
 ### Create Restaurant (Owner)
 ```
 POST /api/restaurants

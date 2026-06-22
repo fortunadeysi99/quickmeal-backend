@@ -22,6 +22,8 @@ const cartSchema = new mongoose.Schema(
         name: String,
         price: Number,
         image: String,
+        variantName: String,
+        variantPrice: Number,
         qty: {
           type: Number,
           required: true,

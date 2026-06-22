@@ -9,6 +9,45 @@ function canManageRestaurant(reqUser, ownerId) {
   return ownerId.toString() === reqUser._id.toString();
 }
 
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const toRad = (value) => (value * Math.PI) / 180;
+  const earthRadius = 6371000;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadius * c;
+}
+
+function collectMatchedFields(menu, restaurant, queryLower) {
+  const matched = [];
+  const pushIfMatch = (label, value) => {
+    if (!value) return;
+    const normalized = String(value).toLowerCase();
+    if (boyerMoore(normalized, queryLower)) {
+      matched.push(label);
+    }
+  };
+
+  pushIfMatch("restaurant_name", restaurant?.name);
+  pushIfMatch("restaurant_description", restaurant?.description);
+  pushIfMatch("menu_name", menu?.name);
+  pushIfMatch("menu_description", menu?.description);
+  pushIfMatch("category", menu?.category?.name);
+
+  if (Array.isArray(menu?.variants)) {
+    menu.variants.forEach((variant) => {
+      pushIfMatch("variant", variant?.name);
+    });
+  }
+
+  return [...new Set(matched)];
+}
+
 function normalizeVariants(variants) {
   if (!Array.isArray(variants)) return [];
 
@@ -312,7 +351,15 @@ exports.deleteMenu = async (req, res) => {
 
 exports.searchMenuByName = async (req, res) => {
   try {
-    const { q } = req.query;
+    const {
+      q,
+      category,
+      userLat,
+      userLng,
+      maxDistance,
+      menuLimit = 3,
+      status = "all"
+    } = req.query;
 
     if (!q) {
       return res.status(400).json({
@@ -321,44 +368,126 @@ exports.searchMenuByName = async (req, res) => {
       });
     }
 
-    const allMenus = await Menu.find({
+    const limitPerRestaurant = Math.max(parseInt(menuLimit, 10) || 3, 1);
+    const userLatitude = Number(userLat);
+    const userLongitude = Number(userLng);
+    const hasUserLocation = Number.isFinite(userLatitude) && Number.isFinite(userLongitude);
+    const maxDistanceMeters = Number.isFinite(Number(maxDistance))
+      ? Math.max(Number(maxDistance), 0)
+      : null;
+
+    const menuQuery = {
       isAvailable: true,
-      status: { $ne: "deleted" },
-    })
+    };
+
+    if (status === "deleted") {
+      menuQuery.status = "deleted";
+    } else if (status !== "all") {
+      menuQuery.status = { $ne: "deleted" };
+    }
+
+    const allMenus = await Menu.find(menuQuery)
       .populate("restaurant")
       .populate("category", "name");
 
-    const searchResults = allMenus.filter((menu) => {
-      return boyerMoore(menu.name.toLowerCase(), q.toLowerCase());
-    });
-
+    const queryLower = q.toLowerCase();
     const groupedResults = {};
 
-    searchResults.forEach((menu) => {
-      const restaurantId = menu.restaurant._id;
+    allMenus.forEach((menu) => {
+      const restaurant = menu.restaurant;
+      if (!restaurant) return;
+
+      if (category) {
+        const categoryName = menu.category?.name?.toLowerCase() || "";
+        if (!boyerMoore(categoryName, String(category).toLowerCase())) {
+          return;
+        }
+      }
+
+      const matchedFields = collectMatchedFields(menu, restaurant, queryLower);
+      if (matchedFields.length === 0) return;
+
+      const restaurantId = String(restaurant._id);
+
       if (!groupedResults[restaurantId]) {
+        let distanceMeters = null;
+        const restaurantLat = Number(restaurant.location?.latitude);
+        const restaurantLng = Number(restaurant.location?.longitude);
+        const canMeasureDistance =
+          hasUserLocation && Number.isFinite(restaurantLat) && Number.isFinite(restaurantLng);
+
+        if (canMeasureDistance) {
+          distanceMeters = Math.round(
+            haversineMeters(userLatitude, userLongitude, restaurantLat, restaurantLng)
+          );
+
+          if (maxDistanceMeters !== null && distanceMeters > maxDistanceMeters) {
+            return;
+          }
+        }
+
         groupedResults[restaurantId] = {
           restaurant: {
-            _id: menu.restaurant._id,
-            name: menu.restaurant.name,
-            address: menu.restaurant.address,
-            phone: menu.restaurant.phone,
-            rating: menu.restaurant.rating,
-            location: menu.restaurant.location,
+            _id: restaurant._id,
+            name: restaurant.name,
+            description: restaurant.description || "",
+            address: restaurant.address,
+            phone: restaurant.phone,
+            logo: restaurant.logo || null,
+            banner: restaurant.banner || null,
+            rating: restaurant.rating,
+            location: restaurant.location,
+            distanceMeters,
           },
           menus: [],
+          totalMatchedMenus: 0,
+          matchedOn: new Set(),
         };
       }
-      groupedResults[restaurantId].menus.push(menu);
+
+      const restaurantBucket = groupedResults[restaurantId];
+
+      if (restaurantBucket.menus.length < limitPerRestaurant) {
+        restaurantBucket.menus.push(menu);
+      }
+
+      restaurantBucket.totalMatchedMenus += 1;
+      matchedFields.forEach((field) => restaurantBucket.matchedOn.add(field));
     });
 
-    const results = Object.values(groupedResults);
+    const results = Object.values(groupedResults)
+      .map((item) => ({
+        ...item,
+        hasMoreMenus: item.totalMatchedMenus > item.menus.length,
+        matchedOn: Array.from(item.matchedOn),
+      }))
+      .sort((a, b) => {
+        const distanceA = a.restaurant.distanceMeters;
+        const distanceB = b.restaurant.distanceMeters;
+
+        if (distanceA != null && distanceB != null) {
+          if (distanceA !== distanceB) return distanceA - distanceB;
+        } else if (distanceA != null) {
+          return -1;
+        } else if (distanceB != null) {
+          return 1;
+        }
+
+        return b.totalMatchedMenus - a.totalMatchedMenus;
+      });
+
+    const totalMenusMatched = results.reduce((acc, item) => acc + item.totalMatchedMenus, 0);
 
     return res.json({
       success: true,
       query: q,
-      total: searchResults.length,
+      total: totalMenusMatched,
       restaurantsFound: results.length,
+      appliedFilters: {
+        category: category || null,
+        maxDistance: maxDistanceMeters,
+        menuLimit: limitPerRestaurant,
+      },
       results,
     });
   } catch (err) {

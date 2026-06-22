@@ -3,6 +3,7 @@ const Restaurant = require("../models/Restaurant");
 const Menu = require("../models/Menu");
 const Order = require("../models/Order");
 const Category = require("../models/Category");
+const WalletTransaction = require("../models/WalletTransaction");
 
 // ==================== OVERVIEW / STATS ====================
 exports.getOverview = async (req, res) => {
@@ -161,5 +162,58 @@ exports.updateCategoryAsAdmin = async (req, res) => {
     res.json({ success: true, message: "Kategori berhasil diperbarui oleh admin", category });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ==================== ADMIN TOPUP WALLET ====================
+exports.topupWalletAsAdmin = async (req, res) => {
+  try {
+    const { userId, amount, note } = req.body;
+
+    const topupAmount = Number(amount);
+    if (!userId || !Number.isFinite(topupAmount) || topupAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "userId dan amount (>0) wajib diisi",
+      });
+    }
+
+    const targetUser = await User.findById(userId);
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User tidak ditemukan",
+      });
+    }
+
+    const balanceBefore = targetUser.walletBalance || 0;
+    targetUser.walletBalance = balanceBefore + topupAmount;
+    await targetUser.save();
+
+    const transaction = await WalletTransaction.create({
+      user: targetUser._id,
+      direction: "in",
+      amount: topupAmount,
+      balanceBefore,
+      balanceAfter: targetUser.walletBalance,
+      type: "topup",
+      counterparty: req.user?._id || null,
+      actor: req.user?._id || null,
+      note: note || "Top up oleh admin",
+    });
+
+    return res.json({
+      success: true,
+      message: "Top up saldo berhasil",
+      wallet: {
+        userId: targetUser._id,
+        name: targetUser.name,
+        role: targetUser.role,
+        balance: targetUser.walletBalance,
+      },
+      transaction,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
