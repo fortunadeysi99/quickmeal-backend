@@ -140,20 +140,39 @@ exports.getAllRestaurants = async (req, res) => {
 
     const query = {};
 
+    const escapedSearch = search
+      ? search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      : null;
+    const searchRegex = escapedSearch ? new RegExp(escapedSearch, "i") : null;
+
     if (category) {
       query.categories = { $in: [category] };
     }
 
-    if (search) {
+    if (searchRegex) {
       if (searchMode === "name_only") {
-        query.name = { $regex: search, $options: "i" };
+        query.name = searchRegex;
       } else {
+        const menuMatches = await Menu.find({
+          status: { $ne: "deleted" },
+          $or: [
+            { name: searchRegex },
+            { description: searchRegex },
+          ],
+        }).select("restaurant");
+
+        const matchedRestaurantIds = [...new Set(menuMatches.map((item) => item.restaurant?.toString()).filter(Boolean))];
+
         query.$or = [
-          { name: { $regex: search, $options: "i" } },
-          { description: { $regex: search, $options: "i" } },
-          { address: { $regex: search, $options: "i" } },
-          { categories: { $elemMatch: { $regex: search, $options: "i" } } },
+          { name: searchRegex },
+          { description: searchRegex },
+          { address: searchRegex },
+          { categories: { $elemMatch: { $regex: searchRegex } } },
         ];
+
+        if (matchedRestaurantIds.length > 0) {
+          query.$or.push({ _id: { $in: matchedRestaurantIds } });
+        }
       }
     }
 

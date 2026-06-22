@@ -201,6 +201,19 @@ Endpoint ini dipakai untuk halaman pencarian user/admin/owner dengan pencocokan 
 - nama kategori
 - nama varian
 
+### Perilaku di Halaman Cari Kuliner
+
+- Jika keyword pencarian diisi, aplikasi memanggil endpoint `GET /api/menus/search`.
+- Endpoint ini memakai algoritma **Boyer-Moore** untuk memeriksa kecocokan pada:
+  - nama restoran
+  - deskripsi restoran
+  - nama menu
+  - deskripsi menu
+  - nama kategori
+  - nama varian
+- Hasil dikembalikan dalam bentuk grup per restoran, dengan daftar menu yang cocok pada restoran tersebut.
+- Jika keyword kosong, aplikasi kembali ke mode jelajah default memakai list restoran paginated biasa.
+
 ### Endpoint
 ```
 GET /api/menus/search?q={keyword}&category={opsional}&userLat={opsional}&userLng={opsional}&maxDistance={opsional-meter}&menuLimit={opsional}
@@ -245,6 +258,15 @@ GET /api/menus/search?q=ayam&category=nusantara&userLat=-6.2000&userLng=106.8166
   ]
 }
 ```
+
+### Ringkasan Implementasi
+
+1. Sistem memuat seluruh menu aktif beserta relasi restoran dan kategori.
+2. Query diubah ke huruf kecil agar pencarian tidak sensitif huruf besar/kecil.
+3. Untuk setiap menu, fungsi `collectMatchedFields(...)` memeriksa semua field target dengan `boyerMoore(text, pattern)`.
+4. Jika ada kecocokan, hasil dikelompokkan berdasarkan restoran.
+5. Restoran kemudian diurutkan berdasarkan jarak pengguna jika lokasi tersedia; jika tidak, diurutkan berdasarkan jumlah menu yang cocok.
+6. Setiap grup menyimpan `matchedOn` agar frontend tahu kecocokan datang dari restoran, menu, kategori, atau varian.
 
 ### Contoh Perhitungan Manual Boyer-Moore
 
@@ -685,6 +707,34 @@ Hasil:
 - Restaurant 1: Nasi Goreng, Nasi Kuning, Nasi Liwet
 - Restaurant 2: Nasi Bakar
 - Restaurant 3: Nasi Padang
+```
+
+### Field yang Dicek oleh Boyer-Moore di QuickMeal
+
+- `restaurant.name`
+- `restaurant.description`
+- `menu.name`
+- `menu.description`
+- `menu.category.name`
+- `menu.variants[].name`
+
+### Pseudocode Singkat
+
+```javascript
+for each menu in allMenus:
+  matchedFields = []
+
+  if boyerMoore(restaurant.name, query): matchedFields.push("restaurant_name")
+  if boyerMoore(restaurant.description, query): matchedFields.push("restaurant_description")
+  if boyerMoore(menu.name, query): matchedFields.push("menu_name")
+  if boyerMoore(menu.description, query): matchedFields.push("menu_description")
+  if boyerMoore(menu.category.name, query): matchedFields.push("category")
+
+  for each variant in menu.variants:
+    if boyerMoore(variant.name, query): matchedFields.push("variant")
+
+  if matchedFields not empty:
+    group result by restaurant
 ```
 
 ---
