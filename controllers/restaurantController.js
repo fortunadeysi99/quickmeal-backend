@@ -2,6 +2,22 @@ const Restaurant = require("../models/Restaurant");
 const User = require("../models/User");
 const Menu = require("../models/Menu");
 
+function calculateDistanceMeters(fromLat, fromLng, toLat, toLng) {
+  const earthRadius = 6371000;
+  const toRadians = (value) => (value * Math.PI) / 180;
+  const latDiff = toRadians(toLat - fromLat);
+  const lngDiff = toRadians(toLng - fromLng);
+  const startLat = toRadians(fromLat);
+  const endLat = toRadians(toLat);
+
+  const a =
+    Math.sin(latDiff / 2) * Math.sin(latDiff / 2) +
+    Math.cos(startLat) * Math.cos(endLat) * Math.sin(lngDiff / 2) * Math.sin(lngDiff / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return earthRadius * c;
+}
+
 // ==================== RESTAURANT CRUD ====================
 
 exports.createRestaurant = async (req, res) => {
@@ -90,9 +106,22 @@ exports.getRestaurantById = async (req, res) => {
 
 exports.getAllRestaurants = async (req, res) => {
   try {
-    const { category, search, owner, operatingStatus, page = 1, limit = 10, sort = "latest" } = req.query;
+    const {
+      category,
+      search,
+      owner,
+      operatingStatus,
+      page = 1,
+      limit = 10,
+      sort = "latest",
+      userLat,
+      userLng,
+    } = req.query;
     const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
     const pageSize = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 50);
+    const parsedUserLat = Number(userLat);
+    const parsedUserLng = Number(userLng);
+    const hasUserLocation = Number.isFinite(parsedUserLat) && Number.isFinite(parsedUserLng);
 
     const query = {};
 
@@ -104,6 +133,8 @@ exports.getAllRestaurants = async (req, res) => {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
         { description: { $regex: search, $options: "i" } },
+        { address: { $regex: search, $options: "i" } },
+        { categories: { $elemMatch: { $regex: search, $options: "i" } } },
       ];
     }
 
@@ -119,25 +150,52 @@ exports.getAllRestaurants = async (req, res) => {
       query.operatingStatus = operatingStatus;
     }
 
-    const sortQuery =
-      sort === "oldest"
-        ? { createdAt: 1 }
-        : sort === "name_asc"
-          ? { name: 1 }
-          : sort === "name_desc"
-            ? { name: -1 }
-            : { createdAt: -1 };
+    const restaurants = await Restaurant.find(query)
+      .populate("menus")
+      .populate("owner", "name email phone status createdAt")
+      .lean();
 
-    const total = await Restaurant.countDocuments(query);
+    const restaurantsWithDistance = restaurants.map((restaurant) => {
+      const latitude = restaurant.location?.latitude;
+      const longitude = restaurant.location?.longitude;
+      const hasRestaurantLocation = Number.isFinite(latitude) && Number.isFinite(longitude);
+
+      return {
+        ...restaurant,
+        distanceMeters:
+          hasUserLocation && hasRestaurantLocation
+            ? calculateDistanceMeters(parsedUserLat, parsedUserLng, latitude, longitude)
+            : null,
+      };
+    });
+
+    const sortedRestaurants = restaurantsWithDistance.sort((left, right) => {
+      if (sort === "nearest" && hasUserLocation) {
+        if (left.distanceMeters == null && right.distanceMeters == null) return 0;
+        if (left.distanceMeters == null) return 1;
+        if (right.distanceMeters == null) return -1;
+        return left.distanceMeters - right.distanceMeters;
+      }
+
+      if (sort === "oldest") {
+        return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+      }
+
+      if (sort === "name_asc") {
+        return left.name.localeCompare(right.name);
+      }
+
+      if (sort === "name_desc") {
+        return right.name.localeCompare(left.name);
+      }
+
+      return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+    });
+
+    const total = sortedRestaurants.length;
     const totalPages = Math.max(Math.ceil(total / pageSize), 1);
     const skip = (pageNumber - 1) * pageSize;
-
-    const restaurants = await Restaurant.find(query)
-      .sort(sortQuery)
-      .skip(skip)
-      .limit(pageSize)
-      .populate("menus")
-      .populate("owner", "name email phone status createdAt");
+    const pagedRestaurants = sortedRestaurants.slice(skip, skip + pageSize);
 
     res.json({
       success: true,
@@ -145,7 +203,8 @@ exports.getAllRestaurants = async (req, res) => {
       page: pageNumber,
       limit: pageSize,
       totalPages,
-      restaurants,
+      hasMore: pageNumber < totalPages,
+      restaurants: pagedRestaurants,
     });
   } catch (err) {
     res.status(500).json({
