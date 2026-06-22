@@ -61,7 +61,13 @@ exports.createRestaurant = async (req, res) => {
 exports.getMyRestaurants = async (req, res) => {
   try {
     const restaurants = await Restaurant.find({ owner: req.user._id })
-      .populate("menus")
+      .populate({
+        path: "menus",
+        populate: {
+          path: "category",
+          select: "name",
+        },
+      })
       .populate("owner", "name email phone");
 
     res.json({
@@ -82,7 +88,13 @@ exports.getRestaurantById = async (req, res) => {
     const { restaurantId } = req.params;
 
     const restaurant = await Restaurant.findById(restaurantId)
-      .populate("menus")
+      .populate({
+        path: "menus",
+        populate: {
+          path: "category",
+          select: "name",
+        },
+      })
       .populate("owner", "name email phone");
 
     if (!restaurant) {
@@ -158,7 +170,13 @@ exports.getAllRestaurants = async (req, res) => {
     }
 
     const restaurants = await Restaurant.find(query)
-      .populate("menus")
+      .populate({
+        path: "menus",
+        populate: {
+          path: "category",
+          select: "name",
+        },
+      })
       .populate("owner", "name email phone status createdAt")
       .lean();
 
