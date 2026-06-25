@@ -198,6 +198,37 @@ exports.getMyOrders = async (req, res) => {
   }
 };
 
+// ==================== GET ORDERS BY USER ID (ADMIN) ====================
+
+exports.getOrdersByUserIdAsAdmin = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { status } = req.query;
+
+    let query = { user: userId };
+
+    if (status) {
+      query.status = status;
+    }
+
+    const orders = await Order.find(query)
+      .populate("restaurant", "name phone address")
+      .populate("items.menu")
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      total: orders.length,
+      orders,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
 // ==================== GET ORDER BY ID ====================
 
 exports.getOrderById = async (req, res) => {
