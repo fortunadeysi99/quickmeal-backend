@@ -254,8 +254,8 @@ exports.getRestaurantOrders = async (req, res) => {
       });
     }
 
-    // Cek owner
-    if (restaurant.owner.toString() !== req.user._id.toString()) {
+    // Cek owner/admin
+    if (req.user.role !== "admin" && restaurant.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: "Anda tidak memiliki akses",
@@ -318,8 +318,8 @@ exports.updateOrderStatus = async (req, res) => {
       });
     }
 
-    // Cek owner
-    if (order.restaurant.owner.toString() !== req.user._id.toString()) {
+    // Cek owner/admin
+    if (req.user.role !== "admin" && order.restaurant.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: "Anda tidak memiliki akses",
