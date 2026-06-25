@@ -10,7 +10,8 @@ exports.getMyProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user._id)
       .select("-password")
-      .populate("wishlist");
+      .populate("wishlist")
+      .populate("restaurants");
 
     res.json({
       success: true,
