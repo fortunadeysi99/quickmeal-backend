@@ -316,7 +316,6 @@ exports.updateRestaurant = async (req, res) => {
     res.json({
       success: true,
       message: "Restoran berhasil diperbarui",
-      restaurant,
     });
   } catch (err) {
     res.status(500).json({
@@ -363,7 +362,6 @@ exports.updateRestaurantStatus = async (req, res) => {
     return res.json({
       success: true,
       message: "Status restoran berhasil diperbarui",
-      restaurant,
     });
   } catch (err) {
     return res.status(500).json({
@@ -408,7 +406,6 @@ exports.updateRestaurantSchedule = async (req, res) => {
     return res.json({
       success: true,
       message: "Jadwal restoran berhasil diperbarui",
-      restaurant,
     });
   } catch (err) {
     return res.status(500).json({
@@ -461,7 +458,6 @@ exports.updateRestaurantLocation = async (req, res) => {
     res.json({
       success: true,
       message: "Lokasi restoran berhasil diperbarui",
-      restaurant,
     });
   } catch (err) {
     res.status(500).json({
