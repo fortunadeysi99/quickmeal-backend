@@ -370,6 +370,8 @@ exports.createUserByAdmin = async (req, res) => {
         name: restaurantName,
         address: restaurantAddress,
         phone: restaurantPhone,
+        operatingStatus: "closed",
+        isOpen: false,
         location: {
           latitude,
           longitude,
@@ -499,6 +501,8 @@ exports.updateUserByAdmin = async (req, res) => {
           name: restaurantName,
           address: restaurantAddress,
           phone: restaurantPhone,
+          operatingStatus: "closed",
+          isOpen: false,
           location: {
             latitude,
             longitude,

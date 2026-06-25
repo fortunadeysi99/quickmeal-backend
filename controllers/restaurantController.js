@@ -37,6 +37,8 @@ exports.createRestaurant = async (req, res) => {
       description,
       address,
       phone,
+      operatingStatus: "closed",
+      isOpen: false,
       categories: categories || [],
     });
 

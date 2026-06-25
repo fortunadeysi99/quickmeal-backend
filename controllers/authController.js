@@ -128,6 +128,8 @@ exports.registerOwner = async (req, res) => {
       name: restaurantName,
       address: restaurantAddress,
       phone: restaurantPhone,
+      operatingStatus: "closed",
+      isOpen: false,
       location: {
         longitude,
         latitude
