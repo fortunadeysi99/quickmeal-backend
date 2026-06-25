@@ -186,6 +186,11 @@ exports.adjustWalletAsAdmin = async (req, res) => {
       note: note || "Penyesuaian saldo oleh admin",
     });
 
+    const populatedTransaction = await WalletTransaction.findById(transaction._id)
+      .populate("counterparty", "name role")
+      .populate("actor", "name role")
+      .populate("order", "_id totalPrice status");
+
     return res.json({
       success: true,
       message: deltaAmount > 0 ? "Saldo berhasil ditambahkan" : "Saldo berhasil dikurangi",
@@ -195,7 +200,7 @@ exports.adjustWalletAsAdmin = async (req, res) => {
         role: targetUser.role,
         balance: targetUser.walletBalance,
       },
-      transaction,
+      transaction: populatedTransaction || transaction,
     });
   } catch (err) {
     return res.status(500).json({
