@@ -70,6 +70,10 @@ const orderSchema = new mongoose.Schema(
       enum: ["cash", "card", "wallet", "bank_transfer"],
       default: "cash",
     },
+    ownerEarningCredited: {
+      type: Boolean,
+      default: false,
+    },
     // Rating dan review
     rating: Number,
     review: String,

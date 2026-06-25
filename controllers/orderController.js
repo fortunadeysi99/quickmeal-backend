@@ -112,6 +112,7 @@ exports.createOrder = async (req, res) => {
       notes: notes || "",
       paymentMethod: normalizedPaymentMethod,
       paymentStatus: normalizedPaymentMethod === "wallet" ? "paid" : "pending",
+      ownerEarningCredited: normalizedPaymentMethod === "wallet",
     });
 
     if (normalizedPaymentMethod === "wallet" && buyerUser && ownerUser) {
@@ -325,6 +326,37 @@ exports.updateOrderStatus = async (req, res) => {
       });
     }
 
+    // Untuk metode pembayaran non-wallet, pendapatan owner baru masuk wallet saat order delivered.
+    if (status === "delivered" && !order.ownerEarningCredited) {
+      const ownerUser = await User.findById(order.restaurant.owner);
+
+      if (!ownerUser) {
+        return res.status(404).json({
+          success: false,
+          message: "Owner restoran tidak ditemukan",
+        });
+      }
+
+      const ownerBefore = ownerUser.walletBalance || 0;
+      ownerUser.walletBalance = ownerBefore + order.totalPrice;
+      await ownerUser.save();
+
+      await WalletTransaction.create({
+        user: ownerUser._id,
+        direction: "in",
+        amount: order.totalPrice,
+        balanceBefore: ownerBefore,
+        balanceAfter: ownerUser.walletBalance,
+        type: "sale",
+        order: order._id,
+        counterparty: order.user,
+        actor: req.user._id,
+        note: `Pendapatan order ${order._id}`,
+      });
+
+      order.ownerEarningCredited = true;
+    }
+
     order.status = status;
     await order.save();
 
@@ -433,6 +465,68 @@ exports.cancelOrder = async (req, res) => {
       await Menu.findByIdAndUpdate(item.menu, {
         $inc: { stock: item.qty },
       });
+    }
+
+    if (
+      order.paymentMethod === "wallet" &&
+      order.paymentStatus === "paid" &&
+      order.ownerEarningCredited
+    ) {
+      const buyerUser = await User.findById(order.user);
+      const restaurant = await Restaurant.findById(order.restaurant);
+      const ownerUser = restaurant ? await User.findById(restaurant.owner) : null;
+
+      if (!buyerUser || !ownerUser) {
+        return res.status(404).json({
+          success: false,
+          message: "Akun user/owner tidak ditemukan untuk proses refund",
+        });
+      }
+
+      if ((ownerUser.walletBalance || 0) < order.totalPrice) {
+        return res.status(400).json({
+          success: false,
+          message: "Refund gagal karena saldo owner tidak mencukupi",
+        });
+      }
+
+      const buyerBefore = buyerUser.walletBalance || 0;
+      const ownerBefore = ownerUser.walletBalance || 0;
+
+      buyerUser.walletBalance = buyerBefore + order.totalPrice;
+      ownerUser.walletBalance = ownerBefore - order.totalPrice;
+
+      await buyerUser.save();
+      await ownerUser.save();
+
+      await WalletTransaction.create({
+        user: buyerUser._id,
+        direction: "in",
+        amount: order.totalPrice,
+        balanceBefore: buyerBefore,
+        balanceAfter: buyerUser.walletBalance,
+        type: "refund",
+        order: order._id,
+        counterparty: ownerUser._id,
+        actor: req.user._id,
+        note: `Refund order ${order._id}`,
+      });
+
+      await WalletTransaction.create({
+        user: ownerUser._id,
+        direction: "out",
+        amount: order.totalPrice,
+        balanceBefore: ownerBefore,
+        balanceAfter: ownerUser.walletBalance,
+        type: "refund",
+        order: order._id,
+        counterparty: buyerUser._id,
+        actor: req.user._id,
+        note: `Pengembalian dana order ${order._id}`,
+      });
+
+      order.ownerEarningCredited = false;
+      order.paymentStatus = "failed";
     }
 
     order.status = "cancelled";
