@@ -1,4 +1,5 @@
 const admin = require("firebase-admin");
+const crypto = require("crypto");
 const User = require("../models/User");
 
 let initialized = false;
@@ -114,6 +115,8 @@ function initFirebaseAdmin() {
 
 function getFirebaseDiagnostics() {
   const inputs = readServiceAccountInputs();
+  const normalizedPrivateKey = inputs.privateKeyRaw ? normalizePrivateKey(inputs.privateKeyRaw) : "";
+  const privateKeyFormat = analyzePrivateKeyFormat(normalizedPrivateKey);
 
   return {
     initialized,
@@ -127,7 +130,45 @@ function getFirebaseDiagnostics() {
       clientX509CertUrl: inputs.clientX509CertUrl || null,
       privateKeyLoaded: Boolean(inputs.privateKeyRaw),
     },
+    privateKey: privateKeyFormat,
     lastInitError,
+  };
+}
+
+function analyzePrivateKeyFormat(privateKey) {
+  if (!privateKey) {
+    return {
+      present: false,
+      hasHeader: false,
+      hasFooter: false,
+      parseable: false,
+      length: 0,
+      lineCount: 0,
+    };
+  }
+
+  const hasHeader = privateKey.includes("-----BEGIN PRIVATE KEY-----");
+  const hasFooter = privateKey.includes("-----END PRIVATE KEY-----");
+  const lineCount = privateKey.split("\n").length;
+
+  let parseable = false;
+  try {
+    crypto.createPrivateKey({
+      key: privateKey,
+      format: "pem",
+    });
+    parseable = true;
+  } catch (err) {
+    parseable = false;
+  }
+
+  return {
+    present: true,
+    hasHeader,
+    hasFooter,
+    parseable,
+    length: privateKey.length,
+    lineCount,
   };
 }
 

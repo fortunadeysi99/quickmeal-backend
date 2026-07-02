@@ -2,7 +2,10 @@ const User = require("../models/User");
 const Restaurant = require("../models/Restaurant");
 const bcrypt = require("bcryptjs");
 const { upsertUserDevice, unregisterUserDevice } = require("../services/mobileDeviceService");
-const { sendPushToUser, getFirebaseDiagnostics } = require("../services/pushNotificationService");
+const {
+  sendPushToUser,
+  getFirebaseDiagnostics,
+} = require("../services/pushNotificationService");
 
 const VALID_ROLES = ["admin", "owner", "user"];
 
@@ -372,6 +375,28 @@ exports.getFirebaseEnvStatus = async (req, res) => {
       success: true,
       message: "Status Firebase berhasil diambil",
       firebase: diagnostics,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+exports.getFirebasePrivateKeyStatus = async (req, res) => {
+  try {
+    const diagnostics = getFirebaseDiagnostics();
+
+    res.json({
+      success: true,
+      message: "Status private key Firebase berhasil diambil",
+      privateKey: diagnostics.privateKey,
+      firebase: {
+        configured: diagnostics.configured,
+        missingFields: diagnostics.missingFields,
+        lastInitError: diagnostics.lastInitError,
+      },
     });
   } catch (err) {
     res.status(500).json({
