@@ -14,10 +14,17 @@ function getOrderStatusLabel(status) {
     ready: "siap",
     on_delivery: "dalam pengantaran",
     delivered: "selesai",
+    completed: "selesai",
     cancelled: "dibatalkan",
   };
 
   return map[status] || status;
+}
+
+function normalizeOrderStatus(status) {
+  if (!status) return status;
+  const normalized = String(status).trim().toLowerCase();
+  return normalized === "completed" ? "delivered" : normalized;
 }
 
 // ==================== CREATE ORDER ====================
@@ -239,8 +246,9 @@ exports.getMyOrders = async (req, res) => {
 
     let query = { user: req.user._id };
 
-    if (status) {
-      query.status = status;
+    const normalizedStatus = normalizeOrderStatus(status);
+    if (normalizedStatus) {
+      query.status = normalizedStatus;
     }
 
     const orders = await Order.find(query)
@@ -270,8 +278,9 @@ exports.getOrdersByUserIdAsAdmin = async (req, res) => {
 
     let query = { user: userId };
 
-    if (status) {
-      query.status = status;
+    const normalizedStatus = normalizeOrderStatus(status);
+    if (normalizedStatus) {
+      query.status = normalizedStatus;
     }
 
     const orders = await Order.find(query)
@@ -363,8 +372,9 @@ exports.getRestaurantOrders = async (req, res) => {
 
     let query = { restaurant: restaurantId };
 
-    if (status) {
-      query.status = status;
+    const normalizedStatus = normalizeOrderStatus(status);
+    if (normalizedStatus) {
+      query.status = normalizedStatus;
     }
 
     const orders = await Order.find(query)
@@ -414,8 +424,9 @@ exports.getOwnerOrders = async (req, res) => {
       restaurant: restaurantId ? restaurantId : { $in: ownerRestaurantIds },
     };
 
-    if (status) {
-      query.status = status;
+    const normalizedStatus = normalizeOrderStatus(status);
+    if (normalizedStatus) {
+      query.status = normalizedStatus;
     }
 
     const orders = await Order.find(query)
@@ -442,7 +453,8 @@ exports.getOwnerOrders = async (req, res) => {
 exports.updateOrderStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { status } = req.body;
+    const requestedStatus = req.body.status;
+    const status = normalizeOrderStatus(requestedStatus);
 
     if (!status) {
       return res.status(400).json({
