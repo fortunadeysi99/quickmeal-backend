@@ -5,6 +5,7 @@ const {
   changePassword,
   registerMobileDevice,
   unregisterMobileDevice,
+  sendTestNotificationToCurrentUser,
   addToWishlist,
   removeFromWishlist,
   getWishlist,
@@ -23,6 +24,7 @@ router.put("/profile", protect, updateProfile);
 router.put("/change-password", protect, changePassword);
 router.post("/devices/register", protect, registerMobileDevice);
 router.post("/devices/unregister", protect, unregisterMobileDevice);
+router.post("/notifications/test", protect, sendTestNotificationToCurrentUser);
 
 // Wishlist routes
 router.post("/wishlist", protect, addToWishlist);

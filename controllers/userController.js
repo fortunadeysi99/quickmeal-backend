@@ -2,6 +2,7 @@ const User = require("../models/User");
 const Restaurant = require("../models/Restaurant");
 const bcrypt = require("bcryptjs");
 const { upsertUserDevice, unregisterUserDevice } = require("../services/mobileDeviceService");
+const { sendPushToUser } = require("../services/pushNotificationService");
 
 const VALID_ROLES = ["admin", "owner", "user"];
 
@@ -285,6 +286,57 @@ exports.unregisterMobileDevice = async (req, res) => {
       success: true,
       message: "Perangkat berhasil dihapus",
       totalDevices: Array.isArray(user.mobileDevices) ? user.mobileDevices.length : 0,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+exports.sendTestNotificationToCurrentUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select("name mobileDevices");
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User tidak ditemukan",
+      });
+    }
+
+    const defaultTitle = "QuickMeal Test Notification";
+    const defaultBody = "Jika pesan ini muncul, push notification sudah berjalan.";
+    const {
+      title = defaultTitle,
+      body = defaultBody,
+      data = {},
+    } = req.body || {};
+
+    const pushResult = await sendPushToUser({
+      userId: user._id,
+      title,
+      body,
+      data: {
+        type: "TEST_NOTIFICATION",
+        timestamp: Date.now(),
+        ...data,
+      },
+    });
+
+    const devices = Array.isArray(user.mobileDevices) ? user.mobileDevices : [];
+    const deviceWithTokenCount = devices.filter((item) => item && item.deviceToken).length;
+
+    res.status(pushResult.success ? 200 : 400).json({
+      success: pushResult.success,
+      message: pushResult.success
+        ? "Test notifikasi berhasil dikirim"
+        : "Test notifikasi gagal dikirim",
+      diagnostics: {
+        totalDevices: devices.length,
+        devicesWithToken: deviceWithTokenCount,
+      },
+      pushResult,
     });
   } catch (err) {
     res.status(500).json({

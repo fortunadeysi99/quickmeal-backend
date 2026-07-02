@@ -15,7 +15,7 @@ exports.registerUser = async (req, res) => {
       });
     }
 
-    const { name, email, password } = req.body;
+    const { name, email, password, deviceId, deviceToken, platform } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -49,6 +49,14 @@ exports.registerUser = async (req, res) => {
       role: "user",
       status: "active"
     });
+
+    if (deviceId || deviceToken) {
+      try {
+        await upsertUserDevice(user, { deviceId, deviceToken, platform });
+      } catch (deviceErr) {
+        console.error("Gagal menyimpan device saat register user:", deviceErr.message);
+      }
+    }
 
     const token = generateToken(user._id);
 
@@ -88,7 +96,10 @@ exports.registerOwner = async (req, res) => {
       restaurantAddress,
       restaurantPhone,
       longitude,
-      latitude
+      latitude,
+      deviceId,
+      deviceToken,
+      platform,
     } = req.body;
 
     if (!name || !email || !password || !restaurantName || !restaurantAddress || !restaurantPhone) {
@@ -123,6 +134,14 @@ exports.registerOwner = async (req, res) => {
       role: "owner",
       status: "active"
     });
+
+    if (deviceId || deviceToken) {
+      try {
+        await upsertUserDevice(owner, { deviceId, deviceToken, platform });
+      } catch (deviceErr) {
+        console.error("Gagal menyimpan device saat register owner:", deviceErr.message);
+      }
+    }
 
     const restaurant = await Restaurant.create({
       owner: owner._id,
