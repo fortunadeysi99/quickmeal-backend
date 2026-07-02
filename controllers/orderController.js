@@ -230,7 +230,7 @@ exports.getMyOrders = async (req, res) => {
     }
 
     const orders = await Order.find(query)
-      .populate("restaurant", "name phone address")
+      .populate("restaurant", "name phone address logo banner")
       .populate("items.menu")
       .sort({ createdAt: -1 });
 
@@ -285,7 +285,7 @@ exports.getOrderById = async (req, res) => {
     const { orderId } = req.params;
 
     const order = await Order.findById(orderId)
-      .populate("restaurant")
+      .populate("restaurant", "name phone address logo banner owner")
       .populate("items.menu");
 
     if (!order) {
@@ -350,6 +350,7 @@ exports.getRestaurantOrders = async (req, res) => {
 
     const orders = await Order.find(query)
       .populate("user", "name email phone")
+      .populate("restaurant", "name phone address logo banner")
       .populate("items.menu")
       .sort({ createdAt: -1 });
 
