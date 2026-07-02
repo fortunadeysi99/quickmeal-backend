@@ -203,7 +203,7 @@ exports.createOrder = async (req, res) => {
         order: order._id,
         counterparty: ownerUser._id,
         actor: buyerUser._id,
-        note: `Pembayaran order ${order._id} (ditahan sampai pesanan siap)`,
+        note: `Pembayaran order ${order._id}`,
       });
     }
 
