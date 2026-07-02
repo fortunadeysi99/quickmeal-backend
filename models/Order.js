@@ -74,6 +74,18 @@ const orderSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    processingStartedAt: {
+      type: Date,
+      default: null,
+    },
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
+    completedAt: {
+      type: Date,
+      default: null,
+    },
     // Rating dan review
     rating: Number,
     review: String,

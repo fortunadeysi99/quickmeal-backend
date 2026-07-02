@@ -499,6 +499,17 @@ exports.updateOrderStatus = async (req, res) => {
       });
     }
 
+    const now = new Date();
+    if (status === "preparing" && !order.processingStartedAt) {
+      order.processingStartedAt = now;
+    }
+    if (status === "cancelled") {
+      order.cancelledAt = now;
+    }
+    if (status === "delivered") {
+      order.completedAt = now;
+    }
+
     // Pendapatan owner masuk saat pesanan sudah siap (atau status sesudahnya bila transisi langsung).
     const shouldCreditOwner = ["ready", "on_delivery", "delivered"].includes(status);
     if (shouldCreditOwner && !order.ownerEarningCredited) {
