@@ -364,6 +364,23 @@ exports.sendTestNotificationToCurrentUser = async (req, res) => {
   }
 };
 
+exports.getFirebaseEnvStatus = async (req, res) => {
+  try {
+    const diagnostics = getFirebaseDiagnostics();
+
+    res.json({
+      success: true,
+      message: "Status Firebase berhasil diambil",
+      firebase: diagnostics,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
 // ==================== WISHLIST ====================
 
 exports.addToWishlist = async (req, res) => {

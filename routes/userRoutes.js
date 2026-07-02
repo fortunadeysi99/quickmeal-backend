@@ -6,6 +6,7 @@ const {
   registerMobileDevice,
   unregisterMobileDevice,
   sendTestNotificationToCurrentUser,
+  getFirebaseEnvStatus,
   addToWishlist,
   removeFromWishlist,
   getWishlist,
@@ -32,6 +33,7 @@ router.delete("/wishlist/:menuId", protect, removeFromWishlist);
 router.get("/wishlist", protect, getWishlist);
 
 // Admin routes
+router.get("/firebase/env", protect, authorize("admin"), getFirebaseEnvStatus);
 router.get("/", protect, authorize("admin"), getAllUsers);
 router.post("/", protect, authorize("admin"), createUserByAdmin);
 router.get("/:userId", protect, authorize("admin"), getUserDetail);
