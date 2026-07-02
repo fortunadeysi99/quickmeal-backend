@@ -10,16 +10,19 @@ function readServiceAccountInputs() {
   const projectId = process.env.project_id || process.env.FIREBASE_PROJECT_ID;
   const privateKeyId = process.env.private_key_id || process.env.FIREBASE_PRIVATE_KEY_ID;
   const privateKeyRaw = process.env.private_key || process.env.FIREBASE_PRIVATE_KEY;
+  const privateKeyBase64 = process.env.private_key_base64 || process.env.FIREBASE_PRIVATE_KEY_BASE64;
   const clientEmail = process.env.client_email || process.env.FIREBASE_CLIENT_EMAIL;
   const clientId = process.env.client_id || process.env.FIREBASE_CLIENT_ID;
   const clientX509CertUrl =
     process.env.client_x509_cert_url || process.env.FIREBASE_CLIENT_X509_CERT_URL;
+  const serviceAccountJson =
+    process.env.firebase_service_account_json || process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
 
   const missingFields = [];
 
   if (!projectId) missingFields.push("project_id");
   if (!privateKeyId) missingFields.push("private_key_id");
-  if (!privateKeyRaw) missingFields.push("private_key");
+  if (!privateKeyRaw && !privateKeyBase64 && !serviceAccountJson) missingFields.push("private_key");
   if (!clientEmail) missingFields.push("client_email");
   if (!clientId) missingFields.push("client_id");
   if (!clientX509CertUrl) missingFields.push("client_x509_cert_url");
@@ -28,9 +31,11 @@ function readServiceAccountInputs() {
     projectId,
     privateKeyId,
     privateKeyRaw,
+    privateKeyBase64,
     clientEmail,
     clientId,
     clientX509CertUrl,
+    serviceAccountJson,
     missingFields,
   };
 }
@@ -54,14 +59,53 @@ function normalizePrivateKey(rawValue) {
   return value;
 }
 
+function decodePrivateKeyBase64(base64Value) {
+  if (!base64Value) {
+    return "";
+  }
+
+  try {
+    return Buffer.from(String(base64Value).trim(), "base64").toString("utf8");
+  } catch (err) {
+    return "";
+  }
+}
+
+function parseServiceAccountJson(jsonValue) {
+  if (!jsonValue) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(String(jsonValue));
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch (err) {
+    return null;
+  }
+}
+
 function buildServiceAccount() {
   const inputs = readServiceAccountInputs();
+
+  const parsedJson = parseServiceAccountJson(inputs.serviceAccountJson);
+  if (parsedJson) {
+    const jsonPrivateKey = normalizePrivateKey(parsedJson.private_key || "");
+    return {
+      type: parsedJson.type || "service_account",
+      project_id: parsedJson.project_id || inputs.projectId,
+      private_key_id: parsedJson.private_key_id || inputs.privateKeyId,
+      private_key: jsonPrivateKey,
+      client_email: parsedJson.client_email || inputs.clientEmail,
+      client_id: parsedJson.client_id || inputs.clientId,
+      client_x509_cert_url: parsedJson.client_x509_cert_url || inputs.clientX509CertUrl,
+    };
+  }
 
   if (inputs.missingFields.length > 0) {
     return null;
   }
 
-  const privateKey = normalizePrivateKey(inputs.privateKeyRaw);
+  const privateKey = normalizePrivateKey(inputs.privateKeyRaw) || normalizePrivateKey(decodePrivateKeyBase64(inputs.privateKeyBase64));
 
   return {
     type: "service_account",
@@ -115,7 +159,12 @@ function initFirebaseAdmin() {
 
 function getFirebaseDiagnostics() {
   const inputs = readServiceAccountInputs();
-  const normalizedPrivateKey = inputs.privateKeyRaw ? normalizePrivateKey(inputs.privateKeyRaw) : "";
+  const parsedJson = parseServiceAccountJson(inputs.serviceAccountJson);
+  const normalizedPrivateKey = parsedJson
+    ? normalizePrivateKey(parsedJson.private_key || "")
+    : inputs.privateKeyRaw
+      ? normalizePrivateKey(inputs.privateKeyRaw)
+      : normalizePrivateKey(decodePrivateKeyBase64(inputs.privateKeyBase64));
   const privateKeyFormat = analyzePrivateKeyFormat(normalizedPrivateKey);
 
   return {
@@ -129,6 +178,8 @@ function getFirebaseDiagnostics() {
       clientId: inputs.clientId || null,
       clientX509CertUrl: inputs.clientX509CertUrl || null,
       privateKeyLoaded: Boolean(inputs.privateKeyRaw),
+      privateKeyBase64Loaded: Boolean(inputs.privateKeyBase64),
+      serviceAccountJsonLoaded: Boolean(inputs.serviceAccountJson),
     },
     privateKey: privateKeyFormat,
     lastInitError,
