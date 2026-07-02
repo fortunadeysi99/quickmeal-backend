@@ -37,6 +37,7 @@ function initFirebaseAdmin() {
   try {
     const serviceAccount = loadServiceAccount();
     if (!serviceAccount) {
+      console.warn("FCM init failed: missing Firebase service account env values");
       return false;
     }
 
@@ -50,6 +51,7 @@ function initFirebaseAdmin() {
     return true;
   } catch (err) {
     console.error("FCM init error:", err.message);
+    console.error("FCM init error stack:", err.stack);
     enabled = false;
     return false;
   }
