@@ -6,6 +6,20 @@ const User = require("../models/User");
 const WalletTransaction = require("../models/WalletTransaction");
 const { sendPushToUser } = require("../services/pushNotificationService");
 
+function getOrderStatusLabel(status) {
+  const map = {
+    pending: "menunggu konfirmasi",
+    confirmed: "dikonfirmasi",
+    preparing: "diproses",
+    ready: "siap",
+    on_delivery: "dalam pengantaran",
+    delivered: "selesai",
+    cancelled: "dibatalkan",
+  };
+
+  return map[status] || status;
+}
+
 // ==================== CREATE ORDER ====================
 
 exports.createOrder = async (req, res) => {
@@ -367,6 +381,57 @@ exports.getRestaurantOrders = async (req, res) => {
   }
 };
 
+// ==================== GET OWNER ORDERS (ALL OWNED RESTAURANTS) ====================
+
+exports.getOwnerOrders = async (req, res) => {
+  try {
+    const { status, restaurantId } = req.query;
+
+    const ownerRestaurants = await Restaurant.find({ owner: req.user._id }).select("_id");
+    const ownerRestaurantIds = ownerRestaurants.map((item) => item._id.toString());
+
+    if (ownerRestaurantIds.length === 0) {
+      return res.json({
+        success: true,
+        total: 0,
+        orders: [],
+      });
+    }
+
+    if (restaurantId && !ownerRestaurantIds.includes(String(restaurantId))) {
+      return res.status(403).json({
+        success: false,
+        message: "Anda tidak memiliki akses ke restoran ini",
+      });
+    }
+
+    const query = {
+      restaurant: restaurantId ? restaurantId : { $in: ownerRestaurantIds },
+    };
+
+    if (status) {
+      query.status = status;
+    }
+
+    const orders = await Order.find(query)
+      .populate("user", "name email phone")
+      .populate("restaurant", "name phone address logo banner")
+      .populate("items.menu")
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      total: orders.length,
+      orders,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
 // ==================== UPDATE ORDER STATUS (OWNER) ====================
 
 exports.updateOrderStatus = async (req, res) => {
@@ -417,9 +482,9 @@ exports.updateOrderStatus = async (req, res) => {
     }
 
     const allowedTransitions = {
-      pending: ["confirmed", "cancelled"],
-      confirmed: ["preparing", "cancelled"],
-      preparing: ["ready", "cancelled"],
+      pending: ["confirmed", "preparing", "delivered", "cancelled"],
+      confirmed: ["preparing", "ready", "delivered", "cancelled"],
+      preparing: ["ready", "on_delivery", "delivered", "cancelled"],
       ready: ["on_delivery", "delivered", "cancelled"],
       on_delivery: ["delivered", "cancelled"],
       delivered: [],
@@ -470,10 +535,11 @@ exports.updateOrderStatus = async (req, res) => {
     await order.save();
 
     try {
+      const statusLabel = getOrderStatusLabel(status);
       await sendPushToUser({
         userId: order.user,
         title: "Status Pesanan Diperbarui",
-        body: `Pesanan #${order._id.toString().slice(-6)} sekarang ${status}`,
+        body: `Pesanan #${order._id.toString().slice(-6)} sekarang ${statusLabel}`,
         data: {
           type: "ORDER_STATUS_UPDATED",
           orderId: order._id,

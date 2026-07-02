@@ -5,6 +5,7 @@ const {
   getOrdersByUserIdAsAdmin,
   getOrderById,
   getRestaurantOrders,
+  getOwnerOrders,
   updateOrderStatus,
   updatePaymentStatus,
   cancelOrder,
@@ -21,6 +22,7 @@ router.put("/:orderId/payment-status", protect, authorize("user"), updatePayment
 router.put("/:orderId/cancel", protect, authorize("user"), cancelOrder);
 
 // Protected routes - Owner
+router.get("/owner/my-orders", protect, authorize("owner", "admin"), getOwnerOrders);
 router.get("/restaurant/:restaurantId", protect, authorize("owner", "admin"), getRestaurantOrders);
 router.put("/:orderId/status", protect, authorize("owner", "admin"), updateOrderStatus);
 
