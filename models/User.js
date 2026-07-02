@@ -98,6 +98,25 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    mobileDevices: [
+      {
+        deviceId: {
+          type: String,
+          index: true,
+        },
+        deviceToken: {
+          type: String,
+        },
+        platform: {
+          type: String,
+          default: "android",
+        },
+        lastSeenAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   {
     timestamps: true,

@@ -2,6 +2,7 @@ const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const Restaurant = require("../models/Restaurant");
 const generateToken = require("../utils/generateToken");
+const { upsertUserDevice } = require("../services/mobileDeviceService");
 
 // ==================== REGISTER ====================
 
@@ -178,7 +179,7 @@ exports.login = async (req, res) => {
       });
     }
 
-    const { email, password } = req.body;
+    const { email, password, deviceId, deviceToken, platform } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
@@ -209,6 +210,14 @@ exports.login = async (req, res) => {
     }
 
     const token = generateToken(user._id);
+
+    if (deviceId || deviceToken) {
+      try {
+        await upsertUserDevice(user, { deviceId, deviceToken, platform });
+      } catch (deviceErr) {
+        console.error("Gagal menyimpan device saat login:", deviceErr.message);
+      }
+    }
 
     res.json({
       success: true,

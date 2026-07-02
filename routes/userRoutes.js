@@ -3,6 +3,8 @@ const {
   getMyProfile,
   updateProfile,
   changePassword,
+  registerMobileDevice,
+  unregisterMobileDevice,
   addToWishlist,
   removeFromWishlist,
   getWishlist,
@@ -19,6 +21,8 @@ const { authorize } = require("../middleware/roleMiddleware");
 router.get("/profile", protect, getMyProfile);
 router.put("/profile", protect, updateProfile);
 router.put("/change-password", protect, changePassword);
+router.post("/devices/register", protect, registerMobileDevice);
+router.post("/devices/unregister", protect, unregisterMobileDevice);
 
 // Wishlist routes
 router.post("/wishlist", protect, addToWishlist);

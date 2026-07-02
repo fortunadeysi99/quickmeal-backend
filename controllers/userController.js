@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const Restaurant = require("../models/Restaurant");
 const bcrypt = require("bcryptjs");
+const { upsertUserDevice, unregisterUserDevice } = require("../services/mobileDeviceService");
 
 const VALID_ROLES = ["admin", "owner", "user"];
 
@@ -216,6 +217,74 @@ exports.changePassword = async (req, res) => {
     res.json({
       success: true,
       message: "Password berhasil diubah",
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+exports.registerMobileDevice = async (req, res) => {
+  try {
+    const { deviceId, deviceToken, platform } = req.body || {};
+
+    if (!deviceId && !deviceToken) {
+      return res.status(400).json({
+        success: false,
+        message: "deviceId atau deviceToken harus diisi",
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User tidak ditemukan",
+      });
+    }
+
+    await upsertUserDevice(user, { deviceId, deviceToken, platform });
+
+    res.json({
+      success: true,
+      message: "Perangkat berhasil didaftarkan",
+      totalDevices: Array.isArray(user.mobileDevices) ? user.mobileDevices.length : 0,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+exports.unregisterMobileDevice = async (req, res) => {
+  try {
+    const { deviceId, deviceToken } = req.body || {};
+
+    if (!deviceId && !deviceToken) {
+      return res.status(400).json({
+        success: false,
+        message: "deviceId atau deviceToken harus diisi",
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User tidak ditemukan",
+      });
+    }
+
+    await unregisterUserDevice(user, { deviceId, deviceToken });
+
+    res.json({
+      success: true,
+      message: "Perangkat berhasil dihapus",
+      totalDevices: Array.isArray(user.mobileDevices) ? user.mobileDevices.length : 0,
     });
   } catch (err) {
     res.status(500).json({

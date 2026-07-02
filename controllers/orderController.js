@@ -4,6 +4,7 @@ const Cart = require("../models/Cart");
 const Restaurant = require("../models/Restaurant");
 const User = require("../models/User");
 const WalletTransaction = require("../models/WalletTransaction");
+const { sendPushToUser } = require("../services/pushNotificationService");
 
 // ==================== CREATE ORDER ====================
 
@@ -203,6 +204,21 @@ exports.createOrder = async (req, res) => {
 
     // Hapus cart user
     await Cart.findOneAndDelete({ user: req.user._id });
+
+    try {
+      await sendPushToUser({
+        userId: restaurant.owner,
+        title: "Pesanan Baru",
+        body: `Ada pesanan baru #${order._id.toString().slice(-6)} untuk restoran Anda`,
+        data: {
+          type: "ORDER_CREATED",
+          orderId: order._id,
+          restaurantId: restaurant._id,
+        },
+      });
+    } catch (notifyErr) {
+      console.error("Gagal kirim notif ke owner:", notifyErr.message);
+    }
 
     res.status(201).json({
       success: true,
@@ -439,6 +455,21 @@ exports.updateOrderStatus = async (req, res) => {
 
     order.status = status;
     await order.save();
+
+    try {
+      await sendPushToUser({
+        userId: order.user,
+        title: "Status Pesanan Diperbarui",
+        body: `Pesanan #${order._id.toString().slice(-6)} sekarang ${status}`,
+        data: {
+          type: "ORDER_STATUS_UPDATED",
+          orderId: order._id,
+          status,
+        },
+      });
+    } catch (notifyErr) {
+      console.error("Gagal kirim notif ke user:", notifyErr.message);
+    }
 
     res.json({
       success: true,
