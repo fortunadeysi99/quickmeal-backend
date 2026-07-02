@@ -300,6 +300,7 @@ exports.getOrderById = async (req, res) => {
 
     const order = await Order.findById(orderId)
       .populate("restaurant", "name phone address logo banner owner")
+      .populate("user", "name email phone")
       .populate("items.menu");
 
     if (!order) {
@@ -310,8 +311,12 @@ exports.getOrderById = async (req, res) => {
     }
 
     // Cek user atau owner restaurant
+    const orderUserId = order.user && order.user._id
+      ? order.user._id.toString()
+      : order.user.toString();
+
     if (
-      order.user.toString() !== req.user._id.toString() &&
+      orderUserId !== req.user._id.toString() &&
       order.restaurant.owner.toString() !== req.user._id.toString()
     ) {
       return res.status(403).json({
