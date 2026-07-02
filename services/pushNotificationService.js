@@ -34,6 +34,25 @@ function readServiceAccountInputs() {
   };
 }
 
+function normalizePrivateKey(rawValue) {
+  if (!rawValue) {
+    return rawValue;
+  }
+
+  let value = String(rawValue).trim();
+
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+
+  value = value.replace(/\\n/g, "\n").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  return value;
+}
+
 function buildServiceAccount() {
   const inputs = readServiceAccountInputs();
 
@@ -41,7 +60,7 @@ function buildServiceAccount() {
     return null;
   }
 
-  const privateKey = inputs.privateKeyRaw.replace(/\\n/g, "\n");
+  const privateKey = normalizePrivateKey(inputs.privateKeyRaw);
 
   return {
     type: "service_account",
