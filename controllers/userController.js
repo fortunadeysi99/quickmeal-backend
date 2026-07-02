@@ -2,7 +2,7 @@ const User = require("../models/User");
 const Restaurant = require("../models/Restaurant");
 const bcrypt = require("bcryptjs");
 const { upsertUserDevice, unregisterUserDevice } = require("../services/mobileDeviceService");
-const { sendPushToUser } = require("../services/pushNotificationService");
+const { sendPushToUser, getFirebaseDiagnostics } = require("../services/pushNotificationService");
 
 const VALID_ROLES = ["admin", "owner", "user"];
 
@@ -332,10 +332,28 @@ exports.sendTestNotificationToCurrentUser = async (req, res) => {
       message: pushResult.success
         ? "Test notifikasi berhasil dikirim"
         : "Test notifikasi gagal dikirim",
+      error: pushResult.success
+        ? null
+        : {
+            reason: pushResult.reason || null,
+            message:
+              pushResult.reason === "fcm-not-configured"
+                ? "Firebase belum bisa diinisialisasi di server"
+                : pushResult.reason === "no-device"
+                  ? "Tidak ada perangkat terdaftar"
+                  : pushResult.reason === "no-token"
+                    ? "Tidak ada token FCM yang valid"
+                    : "Gagal mengirim notifikasi",
+            details: pushResult.error?.message || null,
+          },
       diagnostics: {
         totalDevices: devices.length,
         devicesWithToken: deviceWithTokenCount,
       },
+      firebase:
+        req.user?.role === "admin"
+          ? getFirebaseDiagnostics()
+          : undefined,
       pushResult,
     });
   } catch (err) {

@@ -3,8 +3,9 @@ const User = require("../models/User");
 
 let initialized = false;
 let enabled = false;
+let lastInitError = null;
 
-function loadServiceAccount() {
+function readServiceAccountInputs() {
   const projectId = process.env.project_id || process.env.FIREBASE_PROJECT_ID;
   const privateKeyId = process.env.private_key_id || process.env.FIREBASE_PRIVATE_KEY_ID;
   const privateKeyRaw = process.env.private_key || process.env.FIREBASE_PRIVATE_KEY;
@@ -13,31 +14,61 @@ function loadServiceAccount() {
   const clientX509CertUrl =
     process.env.client_x509_cert_url || process.env.FIREBASE_CLIENT_X509_CERT_URL;
 
-  if (!projectId || !privateKeyId || !privateKeyRaw || !clientEmail || !clientId || !clientX509CertUrl) {
+  const missingFields = [];
+
+  if (!projectId) missingFields.push("project_id");
+  if (!privateKeyId) missingFields.push("private_key_id");
+  if (!privateKeyRaw) missingFields.push("private_key");
+  if (!clientEmail) missingFields.push("client_email");
+  if (!clientId) missingFields.push("client_id");
+  if (!clientX509CertUrl) missingFields.push("client_x509_cert_url");
+
+  return {
+    projectId,
+    privateKeyId,
+    privateKeyRaw,
+    clientEmail,
+    clientId,
+    clientX509CertUrl,
+    missingFields,
+  };
+}
+
+function buildServiceAccount() {
+  const inputs = readServiceAccountInputs();
+
+  if (inputs.missingFields.length > 0) {
     return null;
   }
 
-  const privateKey = privateKeyRaw.replace(/\\n/g, "\n");
+  const privateKey = inputs.privateKeyRaw.replace(/\\n/g, "\n");
 
   return {
     type: "service_account",
-    project_id: projectId,
-    private_key_id: privateKeyId,
+    project_id: inputs.projectId,
+    private_key_id: inputs.privateKeyId,
     private_key: privateKey,
-    client_email: clientEmail,
-    client_id: clientId,
-    client_x509_cert_url: clientX509CertUrl,
+    client_email: inputs.clientEmail,
+    client_id: inputs.clientId,
+    client_x509_cert_url: inputs.clientX509CertUrl,
   };
 }
 
 function initFirebaseAdmin() {
   if (initialized) return enabled;
   initialized = true;
+  lastInitError = null;
 
   try {
-    const serviceAccount = loadServiceAccount();
+    const serviceAccount = buildServiceAccount();
     if (!serviceAccount) {
-      console.warn("FCM init failed: missing Firebase service account env values");
+      const inputs = readServiceAccountInputs();
+      lastInitError = {
+        reason: "missing-service-account-env",
+        message: "Firebase service account env values are missing",
+        missingFields: inputs.missingFields,
+      };
+      console.warn("FCM init failed: missing Firebase service account env values", inputs.missingFields);
       return false;
     }
 
@@ -50,6 +81,11 @@ function initFirebaseAdmin() {
     enabled = true;
     return true;
   } catch (err) {
+    lastInitError = {
+      reason: "firebase-admin-init-error",
+      message: err.message,
+      stack: err.stack,
+    };
     console.error("FCM init error:", err.message);
     console.error("FCM init error stack:", err.stack);
     enabled = false;
@@ -57,19 +93,56 @@ function initFirebaseAdmin() {
   }
 }
 
+function getFirebaseDiagnostics() {
+  const inputs = readServiceAccountInputs();
+
+  return {
+    initialized,
+    enabled,
+    configured: inputs.missingFields.length === 0,
+    missingFields: inputs.missingFields,
+    serviceAccount: {
+      projectId: inputs.projectId || null,
+      clientEmail: inputs.clientEmail || null,
+      clientId: inputs.clientId || null,
+      clientX509CertUrl: inputs.clientX509CertUrl || null,
+      privateKeyLoaded: Boolean(inputs.privateKeyRaw),
+    },
+    lastInitError,
+  };
+}
+
 async function sendPushToUser({ userId, title, body, data = {} }) {
   if (!initFirebaseAdmin()) {
-    return { success: false, reason: "fcm-not-configured" };
+    return {
+      success: false,
+      reason: "fcm-not-configured",
+      error: lastInitError,
+    };
   }
 
   const user = await User.findById(userId).select("mobileDevices");
   if (!user || !Array.isArray(user.mobileDevices) || user.mobileDevices.length === 0) {
-    return { success: false, reason: "no-device" };
+    return {
+      success: false,
+      reason: "no-device",
+      error: {
+        reason: "no-device",
+        message: "Tidak ada perangkat terdaftar",
+      },
+    };
   }
 
   const tokens = [...new Set(user.mobileDevices.map((d) => d.deviceToken).filter(Boolean))];
   if (tokens.length === 0) {
-    return { success: false, reason: "no-token" };
+    return {
+      success: false,
+      reason: "no-token",
+      error: {
+        reason: "no-token",
+        message: "Tidak ada token FCM yang valid",
+      },
+    };
   }
 
   const message = {
@@ -110,9 +183,16 @@ async function sendPushToUser({ userId, title, body, data = {} }) {
     success: response.successCount > 0,
     successCount: response.successCount,
     failureCount: response.failureCount,
+    error: response.failureCount > 0
+      ? {
+          reason: "partial-failure",
+          message: "Sebagian token gagal menerima notifikasi",
+        }
+      : null,
   };
 }
 
 module.exports = {
   sendPushToUser,
+  getFirebaseDiagnostics,
 };
