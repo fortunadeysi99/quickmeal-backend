@@ -71,24 +71,73 @@ exports.createOrder = async (req, res) => {
       await menu.save();
     }
 
-    // Hitung biaya delivery dan pajak
-    const deliveryFee = 5000; // Fixed delivery fee, bisa disesuaikan
-    const tax = Math.round(subtotal * 0.1); // 10% tax
-    const totalPrice = subtotal + deliveryFee + tax;
+    // Sinkron dengan aplikasi: sementara ongkir dan pajak tidak dipakai.
+    const deliveryFee = 0;
+    const tax = 0;
+    const totalPrice = subtotal;
 
     const normalizedPaymentMethod = paymentMethod || "cash";
+
+    const userProfile = await User.findById(req.user._id);
+    if (!userProfile) {
+      return res.status(404).json({
+        success: false,
+        message: "User tidak ditemukan",
+      });
+    }
+
+    const selectedDeliveryAddress =
+      deliveryAddress && typeof deliveryAddress === "object" ? deliveryAddress : null;
+    const profilePrimaryAddress =
+      Array.isArray(userProfile.deliveryAddresses) && userProfile.deliveryAddresses.length > 0
+        ? userProfile.deliveryAddresses.find((item) => item.isPrimary) || userProfile.deliveryAddresses[0]
+        : null;
+    const profileDeliveryAddress = profilePrimaryAddress || userProfile.deliveryAddress || null;
+
+    const normalizedDeliveryAddress = {
+      street:
+        selectedDeliveryAddress?.street ||
+        selectedDeliveryAddress?.address ||
+        profileDeliveryAddress?.address ||
+        userProfile.address ||
+        "",
+      city: selectedDeliveryAddress?.city || "",
+      postalCode: selectedDeliveryAddress?.postalCode || "",
+      latitude:
+        selectedDeliveryAddress?.latitude ??
+        profileDeliveryAddress?.latitude ??
+        undefined,
+      longitude:
+        selectedDeliveryAddress?.longitude ??
+        profileDeliveryAddress?.longitude ??
+        undefined,
+    };
+
+    if (!normalizedDeliveryAddress.street) {
+      return res.status(400).json({
+        success: false,
+        message: "Alamat pengiriman belum tersedia. Simpan alamat pengiriman terlebih dahulu.",
+      });
+    }
 
     let buyerUser = null;
     let ownerUser = null;
 
     if (normalizedPaymentMethod === "wallet") {
-      buyerUser = await User.findById(req.user._id);
+      buyerUser = userProfile;
       ownerUser = await User.findById(restaurant.owner);
 
       if (!buyerUser || !ownerUser) {
         return res.status(404).json({
           success: false,
           message: "Akun user/owner tidak ditemukan",
+        });
+      }
+
+      if (!Number.isFinite(totalPrice) || totalPrice <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Total pembayaran tidak valid",
         });
       }
 
@@ -108,7 +157,7 @@ exports.createOrder = async (req, res) => {
       deliveryFee,
       tax,
       totalPrice,
-      deliveryAddress: deliveryAddress || {},
+      deliveryAddress: normalizedDeliveryAddress,
       notes: notes || "",
       paymentMethod: normalizedPaymentMethod,
       paymentStatus: normalizedPaymentMethod === "wallet" ? "paid" : "pending",

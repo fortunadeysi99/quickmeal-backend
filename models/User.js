@@ -22,6 +22,45 @@ const userSchema = new mongoose.Schema(
     address: {
       type: String,
     },
+    deliveryAddress: {
+      address: {
+        type: String,
+      },
+      latitude: {
+        type: Number,
+      },
+      longitude: {
+        type: Number,
+      },
+      notes: {
+        type: String,
+      },
+    },
+    deliveryAddresses: [
+      {
+        label: {
+          type: String,
+          default: "Utama",
+        },
+        address: {
+          type: String,
+        },
+        latitude: {
+          type: Number,
+        },
+        longitude: {
+          type: Number,
+        },
+        notes: {
+          type: String,
+          default: "",
+        },
+        isPrimary: {
+          type: Boolean,
+          default: false,
+        },
+      },
+    ],
     role: {
       type: String,
       enum: ["admin", "owner", "user"],

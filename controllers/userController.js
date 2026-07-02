@@ -34,7 +34,15 @@ exports.updateProfile = async (req, res) => {
       });
     }
 
-    const { name, email, phone, address, avatar } = req.body;
+    const {
+      name,
+      email,
+      phone,
+      address,
+      avatar,
+      deliveryAddress,
+      deliveryAddresses,
+    } = req.body;
 
     const user = await User.findById(req.user._id);
 
@@ -49,6 +57,91 @@ exports.updateProfile = async (req, res) => {
     if (phone) user.phone = phone;
     if (address) user.address = address;
     if (avatar) user.avatar = avatar;
+
+    if (deliveryAddress !== undefined) {
+      if (deliveryAddress === null) {
+        user.deliveryAddress = undefined;
+      } else if (typeof deliveryAddress === "object") {
+        const parsedLatitude =
+          deliveryAddress.latitude !== undefined && deliveryAddress.latitude !== null
+            ? Number(deliveryAddress.latitude)
+            : undefined;
+        const parsedLongitude =
+          deliveryAddress.longitude !== undefined && deliveryAddress.longitude !== null
+            ? Number(deliveryAddress.longitude)
+            : undefined;
+
+        user.deliveryAddress = {
+          address: deliveryAddress.address || user.address || "",
+          latitude: Number.isFinite(parsedLatitude) ? parsedLatitude : undefined,
+          longitude: Number.isFinite(parsedLongitude) ? parsedLongitude : undefined,
+          notes: deliveryAddress.notes || "",
+        };
+      }
+    }
+
+    if (deliveryAddresses !== undefined) {
+      if (deliveryAddresses === null) {
+        user.deliveryAddresses = [];
+      } else if (Array.isArray(deliveryAddresses)) {
+        const sanitizedAddresses = deliveryAddresses
+          .map((item) => {
+            if (!item || typeof item !== "object") return null;
+
+            const parsedLatitude =
+              item.latitude !== undefined && item.latitude !== null
+                ? Number(item.latitude)
+                : undefined;
+            const parsedLongitude =
+              item.longitude !== undefined && item.longitude !== null
+                ? Number(item.longitude)
+                : undefined;
+
+            return {
+              label: item.label || "Alamat",
+              address: item.address || "",
+              latitude: Number.isFinite(parsedLatitude) ? parsedLatitude : undefined,
+              longitude: Number.isFinite(parsedLongitude) ? parsedLongitude : undefined,
+              notes: item.notes || "",
+              isPrimary: item.isPrimary === true,
+            };
+          })
+          .filter((item) => item && item.address)
+          .slice(0, 10);
+
+        if (sanitizedAddresses.length > 0) {
+          const primaryIndex = sanitizedAddresses.findIndex((item) => item.isPrimary);
+          const resolvedPrimaryIndex = primaryIndex >= 0 ? primaryIndex : 0;
+          user.deliveryAddresses = sanitizedAddresses.map((item, index) => ({
+            ...item,
+            isPrimary: index === resolvedPrimaryIndex,
+          }));
+
+          const primaryAddress = user.deliveryAddresses[resolvedPrimaryIndex];
+          user.deliveryAddress = {
+            address: primaryAddress.address,
+            latitude: primaryAddress.latitude,
+            longitude: primaryAddress.longitude,
+            notes: primaryAddress.notes,
+          };
+        } else {
+          user.deliveryAddresses = [];
+        }
+      }
+    }
+
+    if (user.deliveryAddress && (!Array.isArray(user.deliveryAddresses) || user.deliveryAddresses.length === 0)) {
+      user.deliveryAddresses = [
+        {
+          label: "Utama",
+          address: user.deliveryAddress.address || user.address || "",
+          latitude: user.deliveryAddress.latitude,
+          longitude: user.deliveryAddress.longitude,
+          notes: user.deliveryAddress.notes || "",
+          isPrimary: true,
+        },
+      ];
+    }
 
     if (email && email !== user.email) {
       if (!/\S+@\S+\.\S+/.test(email)) {
@@ -80,6 +173,8 @@ exports.updateProfile = async (req, res) => {
         email: user.email,
         phone: user.phone,
         address: user.address,
+        deliveryAddress: user.deliveryAddress,
+        deliveryAddresses: user.deliveryAddresses,
         avatar: user.avatar,
         role: user.role,
       },
