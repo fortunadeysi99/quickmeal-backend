@@ -1,22 +1,33 @@
 const admin = require("firebase-admin");
-const fs = require("fs");
-const path = require("path");
 const User = require("../models/User");
 
 let initialized = false;
 let enabled = false;
 
 function loadServiceAccount() {
-  const defaultPath = path.resolve(
-    __dirname,
-    "../.credentials/quickmeal-eb890-firebase-adminsdk-fbsvc-e62d34fc3b.json"
-  );
+  const projectId = process.env.project_id || process.env.FIREBASE_PROJECT_ID;
+  const privateKeyId = process.env.private_key_id || process.env.FIREBASE_PRIVATE_KEY_ID;
+  const privateKeyRaw = process.env.private_key || process.env.FIREBASE_PRIVATE_KEY;
+  const clientEmail = process.env.client_email || process.env.FIREBASE_CLIENT_EMAIL;
+  const clientId = process.env.client_id || process.env.FIREBASE_CLIENT_ID;
+  const clientX509CertUrl =
+    process.env.client_x509_cert_url || process.env.FIREBASE_CLIENT_X509_CERT_URL;
 
-  if (fs.existsSync(defaultPath)) {
-    return JSON.parse(fs.readFileSync(defaultPath, "utf8"));
+  if (!projectId || !privateKeyId || !privateKeyRaw || !clientEmail || !clientId || !clientX509CertUrl) {
+    return null;
   }
 
-  return null;
+  const privateKey = privateKeyRaw.replace(/\\n/g, "\n");
+
+  return {
+    type: "service_account",
+    project_id: projectId,
+    private_key_id: privateKeyId,
+    private_key: privateKey,
+    client_email: clientEmail,
+    client_id: clientId,
+    client_x509_cert_url: clientX509CertUrl,
+  };
 }
 
 function initFirebaseAdmin() {
