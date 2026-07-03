@@ -217,6 +217,8 @@ exports.createOrder = async (req, res) => {
         body: `Ada pesanan baru #${order._id.toString().slice(-6)} untuk restoran Anda`,
         data: {
           type: "ORDER_CREATED",
+          screen: "ORDER_DETAIL",
+          route: `order_detail/${order._id}`,
           orderId: order._id,
           restaurantId: restaurant._id,
         },
@@ -570,6 +572,8 @@ exports.updateOrderStatus = async (req, res) => {
         body: `Pesanan #${order._id.toString().slice(-6)} sekarang ${statusLabel}`,
         data: {
           type: "ORDER_STATUS_UPDATED",
+          screen: "ORDER_DETAIL",
+          route: `order_detail/${order._id}`,
           orderId: order._id,
           status,
         },
