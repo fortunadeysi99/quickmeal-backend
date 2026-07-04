@@ -6,6 +6,7 @@ const {
   getOrderById,
   getRestaurantOrders,
   getOwnerOrders,
+  getHomeDashboard,
   updateOrderStatus,
   updatePaymentStatus,
   cancelOrder,
@@ -17,6 +18,7 @@ const { authorize } = require("../middleware/roleMiddleware");
 router.post("/", protect, authorize("user"), createOrder);
 router.get("/my-orders", protect, authorize("user"), getMyOrders);
 router.get("/admin/users/:userId", protect, authorize("admin"), getOrdersByUserIdAsAdmin);
+router.get("/dashboard", protect, authorize("user", "owner", "admin"), getHomeDashboard);
 router.get("/:orderId", protect, getOrderById);
 router.put("/:orderId/payment-status", protect, authorize("user"), updatePaymentStatus);
 router.put("/:orderId/cancel", protect, authorize("user"), cancelOrder);

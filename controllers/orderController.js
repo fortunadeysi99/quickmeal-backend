@@ -27,6 +27,284 @@ function normalizeOrderStatus(status) {
   return normalized === "completed" ? "delivered" : normalized;
 }
 
+function calculateDistanceMeters(fromLat, fromLng, toLat, toLng) {
+  const earthRadius = 6371000;
+  const toRadians = (value) => (value * Math.PI) / 180;
+  const latDiff = toRadians(toLat - fromLat);
+  const lngDiff = toRadians(toLng - fromLng);
+  const startLat = toRadians(fromLat);
+  const endLat = toRadians(toLat);
+
+  const a =
+    Math.sin(latDiff / 2) * Math.sin(latDiff / 2) +
+    Math.cos(startLat) * Math.cos(endLat) * Math.sin(lngDiff / 2) * Math.sin(lngDiff / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return earthRadius * c;
+}
+
+function startOfToday(date = new Date()) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+}
+
+function startOfWeekMonday(date = new Date()) {
+  const day = date.getDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const start = new Date(date);
+  start.setDate(date.getDate() + diffToMonday);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function buildDayRange(date = new Date()) {
+  const start = startOfToday(date);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+// ==================== HOME DASHBOARD BY ROLE ====================
+
+exports.getHomeDashboard = async (req, res) => {
+  try {
+    const role = req.user?.role;
+    const now = new Date();
+
+    if (!role || !["user", "owner", "admin"].includes(role)) {
+      return res.status(403).json({
+        success: false,
+        message: "Role tidak memiliki akses dashboard",
+      });
+    }
+
+    if (role === "user") {
+      const parsedLat = Number(req.query.userLat);
+      const parsedLng = Number(req.query.userLng);
+      const userDoc = await User.findById(req.user._id)
+        .select("deliveryAddress deliveryAddresses")
+        .lean();
+
+      const primaryAddress = Array.isArray(userDoc?.deliveryAddresses)
+        ? userDoc.deliveryAddresses.find((item) => item?.isPrimary) || userDoc.deliveryAddresses[0]
+        : null;
+
+      const fallbackLat = primaryAddress?.latitude ?? userDoc?.deliveryAddress?.latitude;
+      const fallbackLng = primaryAddress?.longitude ?? userDoc?.deliveryAddress?.longitude;
+
+      const userLat = Number.isFinite(parsedLat) ? parsedLat : fallbackLat;
+      const userLng = Number.isFinite(parsedLng) ? parsedLng : fallbackLng;
+      const hasLocation = Number.isFinite(userLat) && Number.isFinite(userLng);
+
+      const restaurants = await Restaurant.find({})
+        .select("name address logo banner location operatingStatus isOpen createdAt")
+        .lean();
+
+      const nearestRestaurants = restaurants
+        .map((restaurant) => {
+          const latitude = restaurant.location?.latitude;
+          const longitude = restaurant.location?.longitude;
+          const hasRestaurantLocation = Number.isFinite(latitude) && Number.isFinite(longitude);
+
+          return {
+            _id: restaurant._id,
+            name: restaurant.name,
+            address: restaurant.address,
+            logo: restaurant.logo || null,
+            banner: restaurant.banner || null,
+            operatingStatus: restaurant.operatingStatus || (restaurant.isOpen === false ? "closed" : "open"),
+            distanceMeters:
+              hasLocation && hasRestaurantLocation
+                ? calculateDistanceMeters(userLat, userLng, latitude, longitude)
+                : null,
+            createdAt: restaurant.createdAt,
+          };
+        })
+        .sort((left, right) => {
+          if (left.distanceMeters == null && right.distanceMeters == null) {
+            return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+          }
+          if (left.distanceMeters == null) return 1;
+          if (right.distanceMeters == null) return -1;
+          return left.distanceMeters - right.distanceMeters;
+        })
+        .slice(0, 5);
+
+      const popularAggregated = await Order.aggregate([
+        {
+          $match: {
+            user: { $ne: req.user._id },
+            status: { $ne: "cancelled" },
+          },
+        },
+        {
+          $group: {
+            _id: "$restaurant",
+            totalOrders: { $sum: 1 },
+            totalQty: { $sum: { $sum: "$items.qty" } },
+          },
+        },
+        { $sort: { totalOrders: -1, totalQty: -1 } },
+        { $limit: 5 },
+        {
+          $lookup: {
+            from: "restaurants",
+            localField: "_id",
+            foreignField: "_id",
+            as: "restaurant",
+          },
+        },
+        { $unwind: "$restaurant" },
+        {
+          $project: {
+            _id: "$restaurant._id",
+            name: "$restaurant.name",
+            address: "$restaurant.address",
+            logo: "$restaurant.logo",
+            banner: "$restaurant.banner",
+            operatingStatus: "$restaurant.operatingStatus",
+            totalOrders: 1,
+            totalQty: 1,
+          },
+        },
+      ]);
+
+      const { start: todayStart, end: tomorrowStart } = buildDayRange(now);
+
+      const activeTodayOrders = await Order.find({
+        user: req.user._id,
+        createdAt: { $gte: todayStart, $lt: tomorrowStart },
+        status: { $in: ["pending", "confirmed", "preparing", "ready", "on_delivery"] },
+      })
+        .populate("restaurant", "name address phone logo banner")
+        .populate("items.menu")
+        .sort({ createdAt: -1 })
+        .lean();
+
+      return res.json({
+        success: true,
+        role,
+        generatedAt: now,
+        userDashboard: {
+          nearestRestaurants,
+          popularRestaurants: popularAggregated,
+          todayActiveOrders: activeTodayOrders,
+        },
+      });
+    }
+
+    if (role === "owner") {
+      const ownerRestaurants = await Restaurant.find({ owner: req.user._id }).select("_id").lean();
+      const ownerRestaurantIds = ownerRestaurants.map((item) => item._id);
+
+      if (ownerRestaurantIds.length === 0) {
+        return res.json({
+          success: true,
+          role,
+          generatedAt: now,
+          ownerDashboard: {
+            today: {
+              totalOrders: 0,
+              waitingOrders: 0,
+              processingOrders: 0,
+              completedOrders: 0,
+            },
+            latestOrders: [],
+          },
+        });
+      }
+
+      const { start: todayStart, end: tomorrowStart } = buildDayRange(now);
+
+      const [totalToday, waitingToday, processingToday, completedToday, latestOrders] = await Promise.all([
+        Order.countDocuments({
+          restaurant: { $in: ownerRestaurantIds },
+          createdAt: { $gte: todayStart, $lt: tomorrowStart },
+        }),
+        Order.countDocuments({
+          restaurant: { $in: ownerRestaurantIds },
+          createdAt: { $gte: todayStart, $lt: tomorrowStart },
+          status: { $in: ["pending", "confirmed"] },
+        }),
+        Order.countDocuments({
+          restaurant: { $in: ownerRestaurantIds },
+          createdAt: { $gte: todayStart, $lt: tomorrowStart },
+          status: { $in: ["preparing", "ready", "on_delivery"] },
+        }),
+        Order.countDocuments({
+          restaurant: { $in: ownerRestaurantIds },
+          createdAt: { $gte: todayStart, $lt: tomorrowStart },
+          status: "delivered",
+        }),
+        Order.find({ restaurant: { $in: ownerRestaurantIds } })
+          .populate("user", "name email phone")
+          .populate("restaurant", "name address logo banner")
+          .sort({ createdAt: -1 })
+          .limit(5)
+          .lean(),
+      ]);
+
+      return res.json({
+        success: true,
+        role,
+        generatedAt: now,
+        ownerDashboard: {
+          today: {
+            totalOrders: totalToday,
+            waitingOrders: waitingToday,
+            processingOrders: processingToday,
+            completedOrders: completedToday,
+          },
+          latestOrders,
+        },
+      });
+    }
+
+    const weekStart = startOfWeekMonday(now);
+
+    const [
+      usersThisWeek,
+      restaurantsThisWeek,
+      ordersThisWeek,
+      latestUsers,
+      latestRestaurants,
+    ] = await Promise.all([
+      User.countDocuments({ createdAt: { $gte: weekStart }, status: { $ne: "deleted" } }),
+      Restaurant.countDocuments({ createdAt: { $gte: weekStart } }),
+      Order.countDocuments({ createdAt: { $gte: weekStart } }),
+      User.find({ status: { $ne: "deleted" } })
+        .select("name email role createdAt avatar")
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .lean(),
+      Restaurant.find({})
+        .select("name address phone logo banner operatingStatus createdAt")
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .lean(),
+    ]);
+
+    return res.json({
+      success: true,
+      role,
+      generatedAt: now,
+      adminDashboard: {
+        thisWeek: {
+          users: usersThisWeek,
+          restaurants: restaurantsThisWeek,
+          orders: ordersThisWeek,
+        },
+        latestUsers,
+        latestRestaurants,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
 // ==================== CREATE ORDER ====================
 
 exports.createOrder = async (req, res) => {
