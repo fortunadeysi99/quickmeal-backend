@@ -277,11 +277,17 @@ exports.getHomeDashboard = async (req, res) => {
         .limit(5)
         .lean(),
       Restaurant.find({})
-        .select("name address phone logo banner operatingStatus createdAt")
+        .select("name address phone logo banner operatingStatus createdAt owner")
+        .populate("owner", "name")
         .sort({ createdAt: -1 })
         .limit(5)
         .lean(),
     ]);
+
+    const latestRestaurantsWithOwner = latestRestaurants.map((restaurant) => ({
+      ...restaurant,
+      ownerName: restaurant?.owner?.name || null,
+    }));
 
     return res.json({
       success: true,
@@ -294,7 +300,7 @@ exports.getHomeDashboard = async (req, res) => {
           orders: ordersThisWeek,
         },
         latestUsers,
-        latestRestaurants,
+        latestRestaurants: latestRestaurantsWithOwner,
       },
     });
   } catch (err) {
