@@ -168,6 +168,69 @@ exports.getHomeDashboard = async (req, res) => {
         },
       ]);
 
+      const popularTopMenus = await Order.aggregate([
+        {
+          $match: {
+            user: { $ne: req.user._id },
+            status: { $ne: "cancelled" },
+          },
+        },
+        { $unwind: "$items" },
+        {
+          $group: {
+            _id: {
+              restaurant: "$restaurant",
+              menu: "$items.menu",
+            },
+            menuQty: { $sum: "$items.qty" },
+          },
+        },
+        { $sort: { "_id.restaurant": 1, menuQty: -1 } },
+        {
+          $group: {
+            _id: "$_id.restaurant",
+            topMenuId: { $first: "$_id.menu" },
+            topMenuQty: { $first: "$menuQty" },
+          },
+        },
+        {
+          $lookup: {
+            from: "menus",
+            localField: "topMenuId",
+            foreignField: "_id",
+            as: "topMenu",
+          },
+        },
+        {
+          $unwind: {
+            path: "$topMenu",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            topMenuName: "$topMenu.name",
+            topMenuQty: 1,
+          },
+        },
+      ]);
+
+      const topMenuByRestaurant = new Map(
+        popularTopMenus.map((item) => [item._id.toString(), item])
+      );
+
+      const popularRestaurants = popularAggregated.map((restaurant) => {
+        const key = restaurant._id?.toString();
+        const topMenu = key ? topMenuByRestaurant.get(key) : null;
+
+        return {
+          ...restaurant,
+          topMenuName: topMenu?.topMenuName || null,
+          topMenuQty: topMenu?.topMenuQty || null,
+        };
+      });
+
       const { start: todayStart, end: tomorrowStart } = buildDayRange(now);
 
       const activeTodayOrders = await Order.find({
@@ -186,7 +249,7 @@ exports.getHomeDashboard = async (req, res) => {
         generatedAt: now,
         userDashboard: {
           nearestRestaurants,
-          popularRestaurants: popularAggregated,
+          popularRestaurants,
           todayActiveOrders: activeTodayOrders,
         },
       });
