@@ -185,33 +185,47 @@ exports.getHomeDashboard = async (req, res) => {
             menuQty: { $sum: "$items.qty" },
           },
         },
-        { $sort: { "_id.restaurant": 1, menuQty: -1 } },
-        {
-          $group: {
-            _id: "$_id.restaurant",
-            topMenuId: { $first: "$_id.menu" },
-            topMenuQty: { $first: "$menuQty" },
-          },
-        },
         {
           $lookup: {
             from: "menus",
-            localField: "topMenuId",
+            localField: "_id.menu",
             foreignField: "_id",
-            as: "topMenu",
+            as: "menu",
           },
         },
         {
           $unwind: {
-            path: "$topMenu",
+            path: "$menu",
             preserveNullAndEmptyArrays: true,
           },
         },
         {
           $project: {
+            restaurantId: "$_id.restaurant",
+            menuQty: 1,
+            menuName: "$menu.name",
+            menuImage: "$menu.image",
+            menuPrice: "$menu.price",
+          },
+        },
+        { $sort: { restaurantId: 1, menuQty: -1 } },
+        {
+          $group: {
+            _id: "$restaurantId",
+            topMenus: {
+              $push: {
+                name: "$menuName",
+                image: "$menuImage",
+                price: "$menuPrice",
+                qty: "$menuQty",
+              },
+            },
+          },
+        },
+        {
+          $project: {
             _id: 1,
-            topMenuName: "$topMenu.name",
-            topMenuQty: 1,
+            topMenus: { $slice: ["$topMenus", 5] },
           },
         },
       ]);
@@ -223,11 +237,16 @@ exports.getHomeDashboard = async (req, res) => {
       const popularRestaurants = popularAggregated.map((restaurant) => {
         const key = restaurant._id?.toString();
         const topMenu = key ? topMenuByRestaurant.get(key) : null;
+        const topMenus = topMenu?.topMenus || [];
+        const firstTopMenu = topMenus[0] || null;
 
         return {
           ...restaurant,
-          topMenuName: topMenu?.topMenuName || null,
-          topMenuQty: topMenu?.topMenuQty || null,
+          topMenuName: firstTopMenu?.name || null,
+          topMenuQty: firstTopMenu?.qty || null,
+          topMenuImage: firstTopMenu?.image || null,
+          topMenuPrice: firstTopMenu?.price || null,
+          topMenus,
         };
       });
 
