@@ -327,6 +327,7 @@ exports.getOrderById = async (req, res) => {
       : order.user.toString();
 
     if (
+      req.user.role !== "admin" &&
       orderUserId !== req.user._id.toString() &&
       order.restaurant.owner.toString() !== req.user._id.toString()
     ) {
