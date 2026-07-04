@@ -13,7 +13,7 @@ exports.getCart = async (req, res) => {
       })
       .populate({
         path: "items.menu",
-        select: "name price image",
+        select: "name price image isAvailable",
       });
 
     if (!cart) {
@@ -158,7 +158,7 @@ exports.addToCart = async (req, res) => {
       },
       {
         path: "items.menu",
-        select: "name price image",
+        select: "name price image isAvailable",
       },
     ]);
 
@@ -240,7 +240,7 @@ exports.updateCartItem = async (req, res) => {
       },
       {
         path: "items.menu",
-        select: "name price image",
+        select: "name price image isAvailable",
       },
     ]);
 
@@ -310,7 +310,7 @@ exports.removeFromCart = async (req, res) => {
       },
       {
         path: "items.menu",
-        select: "name price image",
+        select: "name price image isAvailable",
       },
     ]);
 

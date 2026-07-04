@@ -297,7 +297,7 @@ exports.getOrdersByUserIdAsAdmin = async (req, res) => {
     }
 
     const orders = await Order.find(query)
-      .populate("restaurant", "name phone address")
+      .populate("restaurant", "name phone address logo banner")
       .populate("items.menu")
       .sort({ createdAt: -1 });
 
