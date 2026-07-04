@@ -9,7 +9,7 @@ exports.getCart = async (req, res) => {
     let cart = await Cart.findOne({ user: req.user._id })
       .populate({
         path: "restaurant",
-        select: "name address phone",
+        select: "name address phone operatingStatus isOpen",
       })
       .populate({
         path: "items.menu",
@@ -154,7 +154,7 @@ exports.addToCart = async (req, res) => {
     await cart.populate([
       {
         path: "restaurant",
-        select: "name address phone",
+        select: "name address phone operatingStatus isOpen",
       },
       {
         path: "items.menu",
@@ -236,7 +236,7 @@ exports.updateCartItem = async (req, res) => {
     await cart.populate([
       {
         path: "restaurant",
-        select: "name address phone",
+        select: "name address phone operatingStatus isOpen",
       },
       {
         path: "items.menu",
@@ -306,7 +306,7 @@ exports.removeFromCart = async (req, res) => {
     await cart.populate([
       {
         path: "restaurant",
-        select: "name address phone",
+        select: "name address phone operatingStatus isOpen",
       },
       {
         path: "items.menu",

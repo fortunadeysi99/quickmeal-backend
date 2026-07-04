@@ -49,6 +49,17 @@ exports.createOrder = async (req, res) => {
       });
     }
 
+    const restaurantStatus = restaurant.operatingStatus || (restaurant.isOpen === false ? "closed" : "open");
+    if (restaurantStatus !== "open") {
+      return res.status(400).json({
+        success: false,
+        message:
+          restaurantStatus === "busy"
+            ? "Restoran sedang sibuk dan belum bisa menerima pesanan"
+            : "Restoran sedang tutup dan belum bisa menerima pesanan",
+      });
+    }
+
     // Hitung total harga
     let subtotal = 0;
     const orderItems = [];
