@@ -150,7 +150,7 @@ exports.createMenu = async (req, res) => {
 exports.getRestaurantMenus = async (req, res) => {
   try {
     const { restaurantId } = req.params;
-    const { category, page = 1, limit = 20, available, status } = req.query;
+    const { category, search, page = 1, limit = 20, available, status } = req.query;
 
     const query = { restaurant: restaurantId };
 
@@ -162,6 +162,15 @@ exports.getRestaurantMenus = async (req, res) => {
 
     if (category) query.category = category;
     if (available !== undefined) query.isAvailable = available === "true";
+
+    if (search) {
+      const escapedSearch = String(search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const searchRegex = new RegExp(escapedSearch, "i");
+      query.$or = [
+        { name: searchRegex },
+        { description: searchRegex },
+      ];
+    }
 
     const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
     const pageSize = Math.max(parseInt(limit, 10) || 20, 1);
