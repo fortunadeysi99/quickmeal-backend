@@ -50,7 +50,9 @@ function collectMatchedFields(menu, restaurant, queryLower) {
   return [...new Set(matched)];
 }
 
-function buildFieldMatchSummary(menu, restaurant, queryLower) {
+function buildFieldMatchSummary(menu, restaurant, queryLower, options = {}) {
+  const { dedupeRestaurantMatches = false, seenRestaurantMatches = null } = options;
+  const restaurantIdentifier = restaurant?._id ? String(restaurant._id) : null;
   const summary = {
     restaurant_name: 0,
     restaurant_description: 0,
@@ -68,10 +70,26 @@ function buildFieldMatchSummary(menu, restaurant, queryLower) {
     variant: [],
   };
 
+  const shouldCountRestaurantField = (label) => {
+    if (!dedupeRestaurantMatches) return true;
+    if (label !== "restaurant_name" && label !== "restaurant_description") {
+      return true;
+    }
+    if (!restaurantIdentifier || !seenRestaurantMatches?.[label]) {
+      return true;
+    }
+    if (seenRestaurantMatches[label].has(restaurantIdentifier)) {
+      return false;
+    }
+    seenRestaurantMatches[label].add(restaurantIdentifier);
+    return true;
+  };
+
   const countIfMatch = (label, value, detailLabel) => {
     if (!value) return;
     const normalized = String(value).toLowerCase();
     if (boyerMoore(normalized, queryLower)) {
+      if (!shouldCountRestaurantField(label)) return;
       summary[label] += 1;
       details[label].push(detailLabel || String(value));
     }
@@ -532,7 +550,7 @@ exports.searchMenuByName = async (req, res) => {
 
     if (status === "deleted") {
       menuQuery.status = "deleted";
-    } else if (status !== "all") {
+    } else {
       menuQuery.status = { $ne: "deleted" };
     }
 
@@ -561,6 +579,10 @@ exports.searchMenuByName = async (req, res) => {
       category: [],
       variant: [],
     };
+    const seenRestaurantFieldMatches = {
+      restaurant_name: new Set(),
+      restaurant_description: new Set(),
+    };
 
     allMenus.forEach((menu) => {
       const restaurant = menu.restaurant;
@@ -576,7 +598,10 @@ exports.searchMenuByName = async (req, res) => {
       const matchedFields = collectMatchedFields(menu, restaurant, queryLower);
       if (matchedFields.length === 0) return;
 
-      const fieldMatchSummary = buildFieldMatchSummary(menu, restaurant, queryLower);
+      const fieldMatchSummary = buildFieldMatchSummary(menu, restaurant, queryLower, {
+        dedupeRestaurantMatches: true,
+        seenRestaurantMatches: seenRestaurantFieldMatches,
+      });
       Object.keys(overallFieldMatchSummary).forEach((key) => {
         overallFieldMatchSummary[key] += fieldMatchSummary.summary[key] || 0;
         overallFieldMatchDetails[key] = overallFieldMatchDetails[key].concat(
@@ -726,8 +751,8 @@ exports.searchMenuByName = async (req, res) => {
       responseBody.boyerMooreManual = finalBoyerMooreManual;
     }
 
-    console.log("[searchMenuByName] matchSummary", JSON.stringify(responseBody.matchSummary));
-    console.log("[searchMenuByName] fieldMatchSummary", JSON.stringify(responseBody.fieldMatchSummary));
+    // console.log("[searchMenuByName] matchSummary", JSON.stringify(responseBody.matchSummary));
+    // console.log("[searchMenuByName] fieldMatchSummary", JSON.stringify(responseBody.fieldMatchSummary));
 
     return res.json(responseBody);
   } catch (err) {
