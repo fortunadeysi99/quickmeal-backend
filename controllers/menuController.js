@@ -742,8 +742,6 @@ exports.searchMenuByName = async (req, res) => {
         fieldMatchSummary: overallFieldMatchSummary,
         fieldMatchDetails: overallFieldMatchDetails,
       },
-      fieldMatchSummary: overallFieldMatchSummary,
-      fieldMatchDetails: overallFieldMatchDetails,
       results,
     };
 
