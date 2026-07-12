@@ -17,8 +17,10 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
   const dLon = toRad(lon2 - lon1);
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return earthRadius * c;
 }
@@ -48,6 +50,48 @@ function collectMatchedFields(menu, restaurant, queryLower) {
   return [...new Set(matched)];
 }
 
+function buildFieldMatchSummary(menu, restaurant, queryLower) {
+  const summary = {
+    restaurant_name: 0,
+    restaurant_description: 0,
+    menu_name: 0,
+    menu_description: 0,
+    category: 0,
+    variant: 0,
+  };
+  const details = {
+    restaurant_name: [],
+    restaurant_description: [],
+    menu_name: [],
+    menu_description: [],
+    category: [],
+    variant: [],
+  };
+
+  const countIfMatch = (label, value, detailLabel) => {
+    if (!value) return;
+    const normalized = String(value).toLowerCase();
+    if (boyerMoore(normalized, queryLower)) {
+      summary[label] += 1;
+      details[label].push(detailLabel || String(value));
+    }
+  };
+
+  countIfMatch("restaurant_name", restaurant?.name, restaurant?.name);
+  countIfMatch("restaurant_description", restaurant?.description, restaurant?.description);
+  countIfMatch("menu_name", menu?.name, menu?.name);
+  countIfMatch("menu_description", menu?.description, menu?.description);
+  countIfMatch("category", menu?.category?.name, menu?.category?.name);
+
+  if (Array.isArray(menu?.variants)) {
+    menu.variants.forEach((variant) => {
+      countIfMatch("variant", variant?.name, variant?.name);
+    });
+  }
+
+  return { summary, details };
+}
+
 function normalizeVariants(variants) {
   if (!Array.isArray(variants)) return [];
 
@@ -56,7 +100,10 @@ function normalizeVariants(variants) {
       name: String(variant?.name || "").trim(),
       price: Number(variant?.price || 0),
     }))
-    .filter((variant) => variant.name && Number.isFinite(variant.price) && variant.price >= 0);
+    .filter(
+      (variant) =>
+        variant.name && Number.isFinite(variant.price) && variant.price >= 0,
+    );
 }
 
 async function resolveCategoryForRestaurant(restaurantId, categoryId) {
@@ -66,6 +113,85 @@ async function resolveCategoryForRestaurant(restaurantId, categoryId) {
     restaurant: restaurantId,
     status: { $ne: "deleted" },
   });
+}
+
+function buildBoyerMooreManualFromText(text, pattern) {
+  const normalizedText = String(text || "").toLowerCase();
+  const normalizedPattern = String(pattern || "").toLowerCase();
+  const manual = boyerMoore.boyerMooreSearchWithSteps(normalizedText, normalizedPattern);
+
+  const base = {
+    sourceText: normalizedText,
+    pattern: normalizedPattern,
+    steps: manual.steps || [],
+    result: manual.found
+      ? `Pola "${normalizedPattern}" ditemukan di teks "${normalizedText}"`
+      : `Pola "${normalizedPattern}" tidak ditemukan di teks "${normalizedText}"`,
+    found: manual.found,
+    position: manual.position,
+    shiftSummary: manual.shiftSummary || [],
+  };
+
+  if (!normalizedPattern) {
+    base.result = "Tidak dapat diproses";
+    base.steps = ["1. Pola kosong, pencarian tidak dapat dilakukan."];
+  }
+
+  if (normalizedPattern.length > normalizedText.length) {
+    base.result = "Tidak dapat diproses";
+    base.steps = ["1. Pola lebih panjang dari teks, pencarian tidak dapat dilakukan."];
+  }
+
+  return base;
+}
+
+function findFirstMatchedText(menu, restaurant, queryLower) {
+  const candidates = [
+    { label: "restaurant_name", value: restaurant?.name },
+    { label: "restaurant_description", value: restaurant?.description },
+    { label: "menu_name", value: menu?.name },
+    { label: "menu_description", value: menu?.description },
+    { label: "category", value: menu?.category?.name },
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate.value) continue;
+
+    const normalized = String(candidate.value).toLowerCase();
+    if (boyerMoore(normalized, queryLower)) {
+      return {
+        label: candidate.label,
+        value: String(candidate.value),
+      };
+    }
+  }
+
+  if (Array.isArray(menu?.variants)) {
+    for (const variant of menu.variants) {
+      if (!variant?.name) continue;
+
+      const normalized = String(variant.name).toLowerCase();
+      if (boyerMoore(normalized, queryLower)) {
+        return {
+          label: "variant",
+          value: String(variant.name),
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function buildManualForMatchedText(menu, restaurant, queryLower) {
+  const firstMatchedText = findFirstMatchedText(menu, restaurant, queryLower);
+  if (!firstMatchedText) return null;
+
+  return {
+    ...buildBoyerMooreManualFromText(firstMatchedText.value, queryLower),
+    sourceField: firstMatchedText.label,
+    sourceValue: firstMatchedText.value,
+  };
 }
 
 // ==================== MENU CRUD ====================
@@ -108,7 +234,7 @@ exports.createMenu = async (req, res) => {
 
     const selectedCategory = await resolveCategoryForRestaurant(
       restaurantId,
-      categoryId || category
+      categoryId || category,
     );
 
     if (!selectedCategory) {
@@ -132,7 +258,10 @@ exports.createMenu = async (req, res) => {
     restaurant.menus.push(menu._id);
     await restaurant.save();
 
-    const populatedMenu = await Menu.findById(menu._id).populate("category", "name");
+    const populatedMenu = await Menu.findById(menu._id).populate(
+      "category",
+      "name",
+    );
 
     return res.status(201).json({
       success: true,
@@ -150,7 +279,14 @@ exports.createMenu = async (req, res) => {
 exports.getRestaurantMenus = async (req, res) => {
   try {
     const { restaurantId } = req.params;
-    const { category, search, page = 1, limit = 20, available, status } = req.query;
+    const {
+      category,
+      search,
+      page = 1,
+      limit = 20,
+      available,
+      status,
+    } = req.query;
 
     const query = { restaurant: restaurantId };
 
@@ -164,12 +300,12 @@ exports.getRestaurantMenus = async (req, res) => {
     if (available !== undefined) query.isAvailable = available === "true";
 
     if (search) {
-      const escapedSearch = String(search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const escapedSearch = String(search).replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&",
+      );
       const searchRegex = new RegExp(escapedSearch, "i");
-      query.$or = [
-        { name: searchRegex },
-        { description: searchRegex },
-      ];
+      query.$or = [{ name: searchRegex }, { description: searchRegex }];
     }
 
     const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
@@ -274,7 +410,7 @@ exports.updateMenu = async (req, res) => {
     if (categoryId || category) {
       const selectedCategory = await resolveCategoryForRestaurant(
         menu.restaurant._id,
-        categoryId || category
+        categoryId || category,
       );
 
       if (!selectedCategory) {
@@ -296,7 +432,10 @@ exports.updateMenu = async (req, res) => {
 
     await menu.save();
 
-    const refreshedMenu = await Menu.findById(menu._id).populate("category", "name");
+    const refreshedMenu = await Menu.findById(menu._id).populate(
+      "category",
+      "name",
+    );
 
     return res.json({
       success: true,
@@ -367,7 +506,8 @@ exports.searchMenuByName = async (req, res) => {
       userLng,
       maxDistance,
       menuLimit = 3,
-      status = "all"
+      status = "all",
+      includeBoyerMooreManual = "true",
     } = req.query;
 
     if (!q) {
@@ -380,7 +520,8 @@ exports.searchMenuByName = async (req, res) => {
     const limitPerRestaurant = Math.max(parseInt(menuLimit, 10) || 3, 1);
     const userLatitude = Number(userLat);
     const userLongitude = Number(userLng);
-    const hasUserLocation = Number.isFinite(userLatitude) && Number.isFinite(userLongitude);
+    const hasUserLocation =
+      Number.isFinite(userLatitude) && Number.isFinite(userLongitude);
     const maxDistanceMeters = Number.isFinite(Number(maxDistance))
       ? Math.max(Number(maxDistance), 0)
       : null;
@@ -401,6 +542,25 @@ exports.searchMenuByName = async (req, res) => {
 
     const queryLower = q.toLowerCase();
     const groupedResults = {};
+    let boyerMooreManual = null;
+    const shouldIncludeManual =
+      String(includeBoyerMooreManual).toLowerCase() !== "false";
+    const overallFieldMatchSummary = {
+      restaurant_name: 0,
+      restaurant_description: 0,
+      menu_name: 0,
+      menu_description: 0,
+      category: 0,
+      variant: 0,
+    };
+    const overallFieldMatchDetails = {
+      restaurant_name: [],
+      restaurant_description: [],
+      menu_name: [],
+      menu_description: [],
+      category: [],
+      variant: [],
+    };
 
     allMenus.forEach((menu) => {
       const restaurant = menu.restaurant;
@@ -416,6 +576,21 @@ exports.searchMenuByName = async (req, res) => {
       const matchedFields = collectMatchedFields(menu, restaurant, queryLower);
       if (matchedFields.length === 0) return;
 
+      const fieldMatchSummary = buildFieldMatchSummary(menu, restaurant, queryLower);
+      Object.keys(overallFieldMatchSummary).forEach((key) => {
+        overallFieldMatchSummary[key] += fieldMatchSummary.summary[key] || 0;
+        overallFieldMatchDetails[key] = overallFieldMatchDetails[key].concat(
+          fieldMatchSummary.details[key] || [],
+        );
+      });
+
+      if (!boyerMooreManual) {
+        const manual = buildManualForMatchedText(menu, restaurant, queryLower);
+        if (manual) {
+          boyerMooreManual = manual;
+        }
+      }
+
       const restaurantId = String(restaurant._id);
 
       if (!groupedResults[restaurantId]) {
@@ -423,14 +598,24 @@ exports.searchMenuByName = async (req, res) => {
         const restaurantLat = Number(restaurant.location?.latitude);
         const restaurantLng = Number(restaurant.location?.longitude);
         const canMeasureDistance =
-          hasUserLocation && Number.isFinite(restaurantLat) && Number.isFinite(restaurantLng);
+          hasUserLocation &&
+          Number.isFinite(restaurantLat) &&
+          Number.isFinite(restaurantLng);
 
         if (canMeasureDistance) {
           distanceMeters = Math.round(
-            haversineMeters(userLatitude, userLongitude, restaurantLat, restaurantLng)
+            haversineMeters(
+              userLatitude,
+              userLongitude,
+              restaurantLat,
+              restaurantLng,
+            ),
           );
 
-          if (maxDistanceMeters !== null && distanceMeters > maxDistanceMeters) {
+          if (
+            maxDistanceMeters !== null &&
+            distanceMeters > maxDistanceMeters
+          ) {
             return;
           }
         }
@@ -451,13 +636,27 @@ exports.searchMenuByName = async (req, res) => {
           menus: [],
           totalMatchedMenus: 0,
           matchedOn: new Set(),
+          boyerMooreManual: null,
         };
       }
 
       const restaurantBucket = groupedResults[restaurantId];
 
+      if (!restaurantBucket.boyerMooreManual) {
+        const manual = buildManualForMatchedText(menu, restaurant, queryLower);
+        if (manual) {
+          restaurantBucket.boyerMooreManual = manual;
+        }
+      }
+
       if (restaurantBucket.menus.length < limitPerRestaurant) {
-        restaurantBucket.menus.push(menu);
+        const menuPayload = {
+          ...(menu.toObject ? menu.toObject() : menu),
+          boyerMooreManual: shouldIncludeManual
+            ? buildManualForMatchedText(menu, restaurant, queryLower)
+            : null,
+        };
+        restaurantBucket.menus.push(menuPayload);
       }
 
       restaurantBucket.totalMatchedMenus += 1;
@@ -469,6 +668,7 @@ exports.searchMenuByName = async (req, res) => {
         ...item,
         hasMoreMenus: item.totalMatchedMenus > item.menus.length,
         matchedOn: Array.from(item.matchedOn),
+        boyerMooreManual: item.boyerMooreManual || null,
       }))
       .sort((a, b) => {
         const distanceA = a.restaurant.distanceMeters;
@@ -485,9 +685,23 @@ exports.searchMenuByName = async (req, res) => {
         return b.totalMatchedMenus - a.totalMatchedMenus;
       });
 
-    const totalMenusMatched = results.reduce((acc, item) => acc + item.totalMatchedMenus, 0);
+    const totalMenusMatched = results.reduce(
+      (acc, item) => acc + item.totalMatchedMenus,
+      0,
+    );
+    const finalBoyerMooreManual = shouldIncludeManual
+      ? boyerMooreManual || {
+          sourceText: q,
+          pattern: queryLower,
+          sourceField: null,
+          sourceValue: null,
+          steps: ["1. Tidak ada data asli yang cocok untuk ditampilkan."],
+          result: `Tidak ada data asli yang cocok untuk query "${q}".`,
+          shiftSummary: [], // ← Tambahkan ini
+        }
+      : undefined;
 
-    return res.json({
+    const responseBody = {
       success: true,
       query: q,
       total: totalMenusMatched,
@@ -497,8 +711,25 @@ exports.searchMenuByName = async (req, res) => {
         maxDistance: maxDistanceMeters,
         menuLimit: limitPerRestaurant,
       },
+      matchSummary: {
+        totalMatchedRestaurants: results.length,
+        totalMatchedMenus: totalMenusMatched,
+        fieldMatchSummary: overallFieldMatchSummary,
+        fieldMatchDetails: overallFieldMatchDetails,
+      },
+      fieldMatchSummary: overallFieldMatchSummary,
+      fieldMatchDetails: overallFieldMatchDetails,
       results,
-    });
+    };
+
+    if (shouldIncludeManual) {
+      responseBody.boyerMooreManual = finalBoyerMooreManual;
+    }
+
+    console.log("[searchMenuByName] matchSummary", JSON.stringify(responseBody.matchSummary));
+    console.log("[searchMenuByName] fieldMatchSummary", JSON.stringify(responseBody.fieldMatchSummary));
+
+    return res.json(responseBody);
   } catch (err) {
     return res.status(500).json({
       success: false,

@@ -1,48 +1,129 @@
 /**
  * Boyer-Moore String Matching Algorithm
- * Fungsi untuk mencari pattern dalam text dengan algoritma Boyer-Moore
- * @param {string} text - Text yang akan dicari
- * @param {string} pattern - Pattern yang dicari
- * @returns {boolean} - True jika pattern ditemukan dalam text
+ * @param {string} text 
+ * @param {string} pattern 
+ * @returns {object} hasil pencarian + steps + ringkasan pergeseran
  */
-function boyerMoore(text, pattern) {
-  if (!text || !pattern || pattern.length > text.length) {
-    return false;
+function buildBadCharacterTable(pattern) {
+  const table = {};
+  for (let i = 0; i < pattern.length; i += 1) {
+    table[pattern[i]] = i;
+  }
+  return table;
+}
+
+function boyerMooreSearchWithSteps(text, pattern) {
+  const normalizedText = String(text || "").toLowerCase();
+  const normalizedPattern = String(pattern || "").toLowerCase();
+
+  if (!normalizedPattern) {
+    return {
+      found: false,
+      position: -1,
+      steps: ["1. Pola kosong, pencarian tidak dapat dilakukan."],
+      shiftSummary: []
+    };
   }
 
-  const n = text.length;
-  const m = pattern.length;
-
-  // Build the bad character table
-  const badChar = {};
-
-  for (let i = 0; i < m; i++) {
-    badChar[pattern[i]] = i;
+  if (normalizedPattern.length > normalizedText.length) {
+    return {
+      found: false,
+      position: -1,
+      steps: ["1. Pola lebih panjang dari teks, pencarian tidak dapat dilakukan."],
+      shiftSummary: []
+    };
   }
 
-  let s = 0; // s is shift of the pattern with respect to text
+  const badChar = buildBadCharacterTable(normalizedPattern);
+  const steps = [
+    `1. Teks awal: "${normalizedText}"`,
+    `2. Pola awal: "${normalizedPattern}"`,
+    `3. Tabel bad character: ${Object.entries(badChar)
+      .map(([char, index]) => `${char} -> ${index}`).join(", ")}`,
+  ];
 
-  while (s <= n - m) {
+  const shiftSummary = []; // ← Ringkasan Pergeseran Baru
+
+  const n = normalizedText.length;
+  const m = normalizedPattern.length;
+  let shift = 0;
+  let attempt = 1;
+
+  while (shift <= n - m) {
+    steps.push(`4. Memeriksa pergeseran ${shift} (Percobaan ${attempt}).`);
+    
     let j = m - 1;
+    let isMatch = true;
 
-    // Keep reducing j while characters of pattern and text are matching at this shift s
-    while (j >= 0 && pattern[j] === text[s + j]) {
+    while (j >= 0 && normalizedPattern[j] === normalizedText[shift + j]) {
+      steps.push(`   - Cocok: karakter pola[${j}] = '${normalizedPattern[j]}'`);
       j--;
     }
 
-    // If the pattern is found at shift s, then return the shift for first occurrence
     if (j < 0) {
-      return true;
+      steps.push(`5. Pencocokan BERHASIL pada posisi ${shift}.`);
+      
+      shiftSummary.push({
+        attempt,
+        startPosition: shift,
+        mismatchChar: "-",
+        shiftValue: "-",
+        category: "Cocok"
+      });
+
+      return {
+        found: true,
+        position: shift,
+        steps,
+        shiftSummary
+      };
     }
 
-    // Shift the pattern so that the next character in text aligns with
-    // the last occurrence of it in pattern.
-    // The condition s+m < n is necessary to make sure that we compare
-    // when the characters is within the limits of the pattern
-    s += Math.max(1, j - (badChar[text[s + j]] ?? -1));
+    const mismatchChar = normalizedText[shift + j];
+    const lastIndex = badChar[mismatchChar] ?? -1;
+    const nextShift = Math.max(1, j - lastIndex);
+
+    // Kategori seperti di DOCX kamu
+    let category = nextShift <= 2 ? "Pendek" : nextShift <= 4 ? "Sedang" : "Panjang";
+
+    steps.push(`5. Mismatch pada karakter "${mismatchChar}" (j=${j})`);
+    steps.push(`   - BC('${mismatchChar}') = ${lastIndex}`);
+    steps.push(`   - Shift = max(1, ${j} - ${lastIndex}) = ${nextShift} (${category})`);
+
+    // Tambahkan ke ringkasan
+    shiftSummary.push({
+      attempt,
+      startPosition: shift,
+      mismatchChar: mismatchChar || "(spasi)",
+      shiftValue: nextShift,
+      category
+    });
+
+    shift += nextShift;
+    attempt++;
   }
 
-  return false;
+  steps.push("6. Semua pergeseran selesai, pola tidak ditemukan.");
+  
+  shiftSummary.push({
+    attempt,
+    startPosition: shift,
+    mismatchChar: "-",
+    shiftValue: "-",
+    category: "Tidak Ditemukan"
+  });
+
+  return {
+    found: false,
+    position: -1,
+    steps,
+    shiftSummary
+  };
+}
+
+function boyerMoore(text, pattern) {
+  return boyerMooreSearchWithSteps(text, pattern).found;
 }
 
 module.exports = boyerMoore;
+module.exports.boyerMooreSearchWithSteps = boyerMooreSearchWithSteps;

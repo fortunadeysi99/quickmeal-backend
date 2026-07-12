@@ -80,19 +80,8 @@ exports.getHomeDashboard = async (req, res) => {
     if (role === "user") {
       const parsedLat = Number(req.query.userLat);
       const parsedLng = Number(req.query.userLng);
-      const userDoc = await User.findById(req.user._id)
-        .select("deliveryAddress deliveryAddresses")
-        .lean();
-
-      const primaryAddress = Array.isArray(userDoc?.deliveryAddresses)
-        ? userDoc.deliveryAddresses.find((item) => item?.isPrimary) || userDoc.deliveryAddresses[0]
-        : null;
-
-      const fallbackLat = primaryAddress?.latitude ?? userDoc?.deliveryAddress?.latitude;
-      const fallbackLng = primaryAddress?.longitude ?? userDoc?.deliveryAddress?.longitude;
-
-      const userLat = Number.isFinite(parsedLat) ? parsedLat : fallbackLat;
-      const userLng = Number.isFinite(parsedLng) ? parsedLng : fallbackLng;
+      const userLat = Number.isFinite(parsedLat) ? parsedLat : null;
+      const userLng = Number.isFinite(parsedLng) ? parsedLng : null;
       const hasLocation = Number.isFinite(userLat) && Number.isFinite(userLng);
 
       const restaurants = await Restaurant.find({})
