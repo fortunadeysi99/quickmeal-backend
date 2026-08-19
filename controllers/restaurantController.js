@@ -260,6 +260,25 @@ exports.getAllRestaurants = async (req, res) => {
   }
 };
 
+// Mengembalikan hanya daftar nama restoran
+exports.getAllRestaurantNames = async (req, res) => {
+  try {
+    const restaurants = await Restaurant.find({}).select("name").lean();
+    const names = restaurants.map((r) => r.name);
+
+    res.json({
+      success: true,
+      total: names.length,
+      names,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
 exports.updateRestaurant = async (req, res) => {
   try {
     const { restaurantId } = req.params;

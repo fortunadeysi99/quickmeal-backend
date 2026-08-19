@@ -4,6 +4,7 @@ const {
   getMyRestaurants,
   getRestaurantById,
   getAllRestaurants,
+  getAllRestaurantNames,
   updateRestaurant,
   updateRestaurantStatus,
   updateRestaurantSchedule,
@@ -17,6 +18,7 @@ const { authorize } = require("../middleware/roleMiddleware");
 
 // Public routes
 router.get("/", getAllRestaurants);
+router.get("/names", getAllRestaurantNames);
 
 // Protected routes - Owner
 router.post("/", protect, authorize("owner"), createRestaurant);
