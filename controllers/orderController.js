@@ -195,6 +195,7 @@ exports.getHomeDashboard = async (req, res) => {
             menuName: "$menu.name",
             menuImage: "$menu.image",
             menuPrice: "$menu.price",
+            menuDiscountPrice: "$menu.discountPrice",
           },
         },
         { $sort: { restaurantId: 1, menuQty: -1 } },
@@ -206,6 +207,7 @@ exports.getHomeDashboard = async (req, res) => {
                 name: "$menuName",
                 image: "$menuImage",
                 price: "$menuPrice",
+                discountPrice: "$menuDiscountPrice",
                 qty: "$menuQty",
               },
             },
@@ -235,6 +237,7 @@ exports.getHomeDashboard = async (req, res) => {
           topMenuQty: firstTopMenu?.qty || null,
           topMenuImage: firstTopMenu?.image || null,
           topMenuPrice: firstTopMenu?.price || null,
+          topMenuDiscountPrice: firstTopMenu?.discountPrice || null,
           topMenus,
         };
       });
