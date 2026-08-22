@@ -23,6 +23,11 @@ const menuSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    discountPrice: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
     // Apakah menu tersedia untuk dipesan
     isAvailable: {
       type: Boolean,
@@ -42,6 +47,11 @@ const menuSchema = new mongoose.Schema(
           type: Number,
           required: true,
           min: 0,
+        },
+        discountPrice: {
+          type: Number,
+          min: 0,
+          default: null,
         },
       },
     ],

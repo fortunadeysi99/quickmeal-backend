@@ -117,11 +117,27 @@ function normalizeVariants(variants) {
     .map((variant) => ({
       name: String(variant?.name || "").trim(),
       price: Number(variant?.price || 0),
+      discountPrice:
+        variant?.discountPrice === undefined || variant?.discountPrice === null || variant?.discountPrice === ""
+          ? null
+          : Number(variant.discountPrice),
     }))
     .filter(
       (variant) =>
-        variant.name && Number.isFinite(variant.price) && variant.price >= 0,
+        variant.name &&
+        Number.isFinite(variant.price) &&
+        variant.price >= 0 &&
+        (variant.discountPrice === null ||
+          (Number.isFinite(variant.discountPrice) &&
+            variant.discountPrice >= 0 &&
+            variant.discountPrice < variant.price)),
     );
+}
+
+function normalizeDiscountPrice(discountPrice, price) {
+  if (discountPrice === undefined || discountPrice === null || discountPrice === "") return null;
+  const value = Number(discountPrice);
+  return Number.isFinite(value) && value >= 0 && value < Number(price) ? value : null;
 }
 
 async function resolveCategoryForRestaurant(restaurantId, categoryId) {
@@ -223,6 +239,7 @@ exports.createMenu = async (req, res) => {
       categoryId,
       category,
       price,
+      discountPrice,
       image,
       variants,
       isAvailable,
@@ -268,6 +285,7 @@ exports.createMenu = async (req, res) => {
       description,
       category: selectedCategory._id,
       price,
+      discountPrice: normalizeDiscountPrice(discountPrice, price),
       image,
       variants: normalizeVariants(variants),
       isAvailable: isAvailable !== undefined ? !!isAvailable : true,
@@ -399,6 +417,7 @@ exports.updateMenu = async (req, res) => {
       categoryId,
       category,
       price,
+      discountPrice,
       image,
       variants,
       isAvailable,
@@ -444,6 +463,12 @@ exports.updateMenu = async (req, res) => {
     if (name !== undefined) menu.name = name;
     if (description !== undefined) menu.description = description;
     if (price !== undefined) menu.price = price;
+    if (price !== undefined || discountPrice !== undefined) {
+      menu.discountPrice = normalizeDiscountPrice(
+        discountPrice !== undefined ? discountPrice : menu.discountPrice,
+        price !== undefined ? price : menu.price,
+      );
+    }
     if (image !== undefined) menu.image = image;
     if (variants !== undefined) menu.variants = normalizeVariants(variants);
     if (isAvailable !== undefined) menu.isAvailable = !!isAvailable;
@@ -525,7 +550,7 @@ exports.searchMenuByName = async (req, res) => {
       maxDistance,
       menuLimit = 3,
       status = "all",
-      includeBoyerMooreManual = "true",
+      includeBoyerMooreManual = false,
     } = req.query;
 
     if (!q) {
@@ -637,10 +662,7 @@ exports.searchMenuByName = async (req, res) => {
             ),
           );
 
-          if (
-            maxDistanceMeters !== null &&
-            distanceMeters > maxDistanceMeters
-          ) {
+          if (maxDistanceMeters !== null && distanceMeters > maxDistanceMeters) {
             return;
           }
         }
@@ -653,8 +675,6 @@ exports.searchMenuByName = async (req, res) => {
             address: restaurant.address,
             phone: restaurant.phone,
             logo: restaurant.logo || null,
-            banner: restaurant.banner || null,
-            rating: restaurant.rating,
             location: restaurant.location,
             distanceMeters,
           },

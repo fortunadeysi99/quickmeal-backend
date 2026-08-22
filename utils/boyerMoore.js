@@ -52,7 +52,7 @@ function boyerMooreSearchWithSteps(text, pattern) {
   while (shift <= n - m) {
     steps.push(`4. Memeriksa pergeseran ${shift} (Percobaan ${attempt}).`);
     
-    let j = m - 1;
+    let j = m - 1;  // m = panjang pola
     let isMatch = true;
 
     while (j >= 0 && normalizedPattern[j] === normalizedText[shift + j]) {

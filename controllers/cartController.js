@@ -13,7 +13,7 @@ exports.getCart = async (req, res) => {
       })
       .populate({
         path: "items.menu",
-        select: "name price image isAvailable",
+        select: "name price discountPrice image isAvailable",
       });
 
     if (!cart) {
@@ -85,8 +85,8 @@ exports.addToCart = async (req, res) => {
     }
 
     const unitPrice = hasVariant
-      ? Number(selectedVariant?.price || variantPrice || menu.price)
-      : menu.price;
+      ? Number(selectedVariant?.discountPrice ?? selectedVariant?.price ?? variantPrice ?? menu.price)
+      : Number(menu.discountPrice ?? menu.price);
 
     let cart = await Cart.findOne({ user: req.user._id });
 
@@ -158,7 +158,7 @@ exports.addToCart = async (req, res) => {
       },
       {
         path: "items.menu",
-        select: "name price image isAvailable",
+        select: "name price discountPrice image isAvailable",
       },
     ]);
 
