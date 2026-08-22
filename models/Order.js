@@ -20,6 +20,9 @@ const orderSchema = new mongoose.Schema(
         },
         name: String,
         price: Number,
+        originalPrice: Number,
+        discountPrice: Number,
+        discountAmount: Number,
         variantName: String,
         qty: {
           type: Number,
@@ -29,6 +32,10 @@ const orderSchema = new mongoose.Schema(
       },
     ],
     subtotal: {
+      type: Number,
+      default: 0,
+    },
+    totalDiscount: {
       type: Number,
       default: 0,
     },

@@ -417,6 +417,7 @@ exports.createOrder = async (req, res) => {
 
     // Hitung total harga
     let subtotal = 0;
+    let totalDiscount = 0;
     const orderItems = [];
 
     for (const item of items) {
@@ -460,13 +461,22 @@ exports.createOrder = async (req, res) => {
       const unitPrice = selectedVariant
         ? Number(selectedVariant.discountPrice ?? selectedVariant.price)
         : Number(menu.discountPrice ?? menu.price);
+      const originalPrice = selectedVariant
+        ? Number(selectedVariant.price)
+        : Number(menu.price);
+      const discountPrice = selectedVariant?.discountPrice ?? menu.discountPrice ?? null;
+      const discountAmount = Math.max(originalPrice - unitPrice, 0);
       const itemSubtotal = unitPrice * item.qty;
       subtotal += itemSubtotal;
+      totalDiscount += discountAmount * item.qty;
 
       orderItems.push({
         menu: menu._id,
         name: normalizedVariantName ? `${menu.name} (${normalizedVariantName})` : menu.name,
         price: unitPrice,
+        originalPrice,
+        discountPrice,
+        discountAmount,
         variantName: normalizedVariantName || null,
         qty: item.qty,
         subtotal: itemSubtotal,
@@ -560,6 +570,7 @@ exports.createOrder = async (req, res) => {
       restaurant: restaurantId,
       items: orderItems,
       subtotal,
+      totalDiscount,
       deliveryFee,
       tax,
       totalPrice,
