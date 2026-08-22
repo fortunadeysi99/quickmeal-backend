@@ -443,13 +443,31 @@ exports.createOrder = async (req, res) => {
         });
       }
 
-      const itemSubtotal = menu.price * item.qty;
+      const normalizedVariantName = String(item.variantName || "").trim();
+      const selectedVariant = normalizedVariantName
+        ? (menu.variants || []).find(
+            (variant) => String(variant.name || "").trim() === normalizedVariantName,
+          )
+        : null;
+
+      if (normalizedVariantName && !selectedVariant) {
+        return res.status(400).json({
+          success: false,
+          message: `Varian menu ${menu.name} tidak valid`,
+        });
+      }
+
+      const unitPrice = selectedVariant
+        ? Number(selectedVariant.discountPrice ?? selectedVariant.price)
+        : Number(menu.discountPrice ?? menu.price);
+      const itemSubtotal = unitPrice * item.qty;
       subtotal += itemSubtotal;
 
       orderItems.push({
         menu: menu._id,
-        name: menu.name,
-        price: menu.price,
+        name: normalizedVariantName ? `${menu.name} (${normalizedVariantName})` : menu.name,
+        price: unitPrice,
+        variantName: normalizedVariantName || null,
         qty: item.qty,
         subtotal: itemSubtotal,
       });
