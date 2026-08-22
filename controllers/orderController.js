@@ -417,6 +417,7 @@ exports.createOrder = async (req, res) => {
 
     // Hitung total harga
     let subtotal = 0;
+    let payableSubtotal = 0;
     let totalDiscount = 0;
     const orderItems = [];
 
@@ -467,7 +468,8 @@ exports.createOrder = async (req, res) => {
       const discountPrice = selectedVariant?.discountPrice ?? menu.discountPrice ?? null;
       const discountAmount = Math.max(originalPrice - unitPrice, 0);
       const itemSubtotal = unitPrice * item.qty;
-      subtotal += itemSubtotal;
+      subtotal += originalPrice * item.qty;
+      payableSubtotal += itemSubtotal;
       totalDiscount += discountAmount * item.qty;
 
       orderItems.push({
@@ -490,7 +492,7 @@ exports.createOrder = async (req, res) => {
     // Sinkron dengan aplikasi: sementara ongkir dan pajak tidak dipakai.
     const deliveryFee = 0;
     const tax = 0;
-    const totalPrice = subtotal;
+    const totalPrice = payableSubtotal;
 
     const normalizedPaymentMethod = paymentMethod || "cash";
 
