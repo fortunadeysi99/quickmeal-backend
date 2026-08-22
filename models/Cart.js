@@ -21,6 +21,9 @@ const cartSchema = new mongoose.Schema(
         },
         name: String,
         price: Number,
+        originalPrice: Number,
+        discountPrice: Number,
+        discountAmount: Number,
         image: String,
         variantName: String,
         variantPrice: Number,
@@ -37,6 +40,10 @@ const cartSchema = new mongoose.Schema(
       default: 0,
     },
     subtotal: {
+      type: Number,
+      default: 0,
+    },
+    totalDiscount: {
       type: Number,
       default: 0,
     },

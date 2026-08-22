@@ -2,6 +2,46 @@ const Cart = require("../models/Cart");
 const Menu = require("../models/Menu");
 const Restaurant = require("../models/Restaurant");
 
+async function syncCartPrices(cart) {
+  const menuIds = [...new Set(cart.items.map((item) => String(item.menu?._id || item.menu)))];
+  const menus = await Menu.find({ _id: { $in: menuIds } });
+  const menuMap = new Map(menus.map((menu) => [String(menu._id), menu]));
+
+  let subtotal = 0;
+  let totalDiscount = 0;
+
+  cart.items.forEach((item) => {
+    const menu = menuMap.get(String(item.menu?._id || item.menu));
+    if (!menu) return;
+
+    const variantName = String(item.variantName || "").trim();
+    const variant = variantName
+      ? (menu.variants || []).find(
+          (candidate) => String(candidate.name || "").trim() === variantName,
+        )
+      : null;
+    const originalPrice = Number(variant?.price ?? menu.price);
+    const discountPrice = variant?.discountPrice ?? menu.discountPrice;
+    const effectivePrice = Number(discountPrice ?? originalPrice);
+    const itemDiscount = Math.max(originalPrice - effectivePrice, 0);
+
+    item.price = effectivePrice;
+    item.originalPrice = originalPrice;
+    item.discountPrice = discountPrice == null ? null : Number(discountPrice);
+    item.discountAmount = itemDiscount;
+    item.image = menu.image;
+    item.name = variantName ? `${menu.name} (${variantName})` : menu.name;
+    item.variantPrice = variant ? effectivePrice : null;
+    item.subtotal = effectivePrice * item.qty;
+    subtotal += item.subtotal;
+    totalDiscount += itemDiscount * item.qty;
+  });
+
+  cart.subtotal = subtotal;
+  cart.totalDiscount = totalDiscount;
+  return cart;
+}
+
 // ==================== GET CART ====================
 
 exports.getCart = async (req, res) => {
@@ -22,6 +62,9 @@ exports.getCart = async (req, res) => {
         message: "Cart kosong",
       });
     }
+
+    await syncCartPrices(cart);
+    await cart.save();
 
     res.json({
       success: true,
@@ -100,6 +143,13 @@ exports.addToCart = async (req, res) => {
             menu: menuId,
             name: hasVariant ? `${menu.name} (${normalizedVariantName})` : menu.name,
             price: unitPrice,
+            originalPrice: hasVariant ? Number(selectedVariant.price) : Number(menu.price),
+            discountPrice: hasVariant
+              ? selectedVariant.discountPrice ?? null
+              : menu.discountPrice ?? null,
+            discountAmount: hasVariant
+              ? Math.max(Number(selectedVariant.price) - unitPrice, 0)
+              : Math.max(Number(menu.price) - unitPrice, 0),
             image: menu.image,
             variantName: hasVariant ? normalizedVariantName : null,
             variantPrice: hasVariant ? unitPrice : null,
@@ -109,6 +159,9 @@ exports.addToCart = async (req, res) => {
         ],
         totalItems: qty,
         subtotal: unitPrice * qty,
+        totalDiscount: hasVariant
+          ? Math.max(Number(selectedVariant.price) - unitPrice, 0) * qty
+          : Math.max(Number(menu.price) - unitPrice, 0) * qty,
       });
     } else {
       // Jika cart dari restaurant berbeda
@@ -129,6 +182,14 @@ exports.addToCart = async (req, res) => {
       if (existingItem > -1) {
         // Update qty
         cart.items[existingItem].qty += qty;
+        cart.items[existingItem].price = unitPrice;
+        cart.items[existingItem].originalPrice = hasVariant ? Number(selectedVariant.price) : Number(menu.price);
+        cart.items[existingItem].discountPrice = hasVariant
+          ? selectedVariant.discountPrice ?? null
+          : menu.discountPrice ?? null;
+        cart.items[existingItem].discountAmount = hasVariant
+          ? Math.max(Number(selectedVariant.price) - unitPrice, 0)
+          : Math.max(Number(menu.price) - unitPrice, 0);
         cart.items[existingItem].subtotal = cart.items[existingItem].price * cart.items[existingItem].qty;
       } else {
         // Tambah item baru
@@ -136,6 +197,13 @@ exports.addToCart = async (req, res) => {
           menu: menuId,
           name: hasVariant ? `${menu.name} (${normalizedVariantName})` : menu.name,
           price: unitPrice,
+          originalPrice: hasVariant ? Number(selectedVariant.price) : Number(menu.price),
+          discountPrice: hasVariant
+            ? selectedVariant.discountPrice ?? null
+            : menu.discountPrice ?? null,
+          discountAmount: hasVariant
+            ? Math.max(Number(selectedVariant.price) - unitPrice, 0)
+            : Math.max(Number(menu.price) - unitPrice, 0),
           image: menu.image,
           variantName: hasVariant ? normalizedVariantName : null,
           variantPrice: hasVariant ? unitPrice : null,
@@ -147,6 +215,12 @@ exports.addToCart = async (req, res) => {
       // Hitung total
       cart.totalItems = cart.items.reduce((acc, item) => acc + item.qty, 0);
       cart.subtotal = cart.items.reduce((acc, item) => acc + item.subtotal, 0);
+      cart.totalDiscount = cart.items.reduce(
+        (acc, item) => acc + Number(item.discountAmount || 0) * item.qty,
+        0,
+      );
+
+        await syncCartPrices(cart);
 
       await cart.save();
     }
