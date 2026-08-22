@@ -8,6 +8,7 @@ async function syncCartPrices(cart) {
   const menuMap = new Map(menus.map((menu) => [String(menu._id), menu]));
 
   let subtotal = 0;
+  let originalSubtotal = 0;
   let totalDiscount = 0;
 
   cart.items.forEach((item) => {
@@ -34,10 +35,12 @@ async function syncCartPrices(cart) {
     item.variantPrice = variant ? effectivePrice : null;
     item.subtotal = effectivePrice * item.qty;
     subtotal += item.subtotal;
+    originalSubtotal += originalPrice * item.qty;
     totalDiscount += itemDiscount * item.qty;
   });
 
   cart.subtotal = subtotal;
+  cart.originalSubtotal = originalSubtotal;
   cart.totalDiscount = totalDiscount;
   return cart;
 }
@@ -159,6 +162,7 @@ exports.addToCart = async (req, res) => {
         ],
         totalItems: qty,
         subtotal: unitPrice * qty,
+        originalSubtotal: (hasVariant ? Number(selectedVariant.price) : Number(menu.price)) * qty,
         totalDiscount: hasVariant
           ? Math.max(Number(selectedVariant.price) - unitPrice, 0) * qty
           : Math.max(Number(menu.price) - unitPrice, 0) * qty,
